@@ -1,0 +1,8 @@
+{
+  "appId": "com.vaporflow.pos",
+  "appName": "VaporFlow",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
