@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm --filter @vaporflow/app build && node -e \"const fs=require('fs');fs.cpSync('../../packages/app/dist','./dist',{recursive:true,force:true})\"",
     "cap:sync": "npx cap sync android",
-    "android:run": "pnpm build && npx cap sync android && npx cap run android",
+    "android:run": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/android.ps1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

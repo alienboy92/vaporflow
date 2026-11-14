@@ -8,7 +8,8 @@
     "test": "node ./node_modules/vitest/vitest.mjs run",
     "dev:desktop": "pnpm --filter @vaporflow/desktop dev",
     "build:desktop": "pnpm --filter @vaporflow/desktop build",
-    "android:run": "pnpm --filter @vaporflow/mobile android:run"
+    "android:run": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android.ps1",
+    "doctor:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android.ps1 -Doctor"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.15.0",
