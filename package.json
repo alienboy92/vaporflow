@@ -21,6 +21,11 @@
     "vitest": "^2.1.0"
   },
   "packageManager": "pnpm@9.14.2",
+  "pnpm": {
+    "overrides": {
+      "extract-zip@2.0.1>yauzl": "3.3.1"
+    }
+  },
   "engines": {
     "node": ">=20"
   }
