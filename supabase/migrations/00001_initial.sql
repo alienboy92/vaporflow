@@ -43,6 +43,7 @@ CREATE TABLE shop_members (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'owner',
   created_at TIMESTAMPTZ DEFAULT now(),
+  server_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(shop_id, user_id)
 );
 
@@ -330,7 +331,7 @@ CREATE POLICY expenses_access_policy ON expenses FOR ALL
   WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
 
 -- ---------------------------------------------------------------------------
--- 7. RPC Functions
+-- 7. RPC Functions (Security Definer hardened with search_path)
 -- ---------------------------------------------------------------------------
 
 -- 1. claim_shop(p_shop_id UUID)
@@ -338,6 +339,7 @@ CREATE OR REPLACE FUNCTION claim_shop(p_shop_id UUID)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user_id UUID;
@@ -348,7 +350,7 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  -- Check if shop_id already exists in shop_members
+  -- Check if shop_id already has any owner/member (prevent claiming an already claimed shop)
   SELECT EXISTS (
     SELECT 1 FROM shop_members WHERE shop_id = p_shop_id
   ) INTO v_exists;
@@ -357,13 +359,9 @@ BEGIN
     RETURN FALSE;
   END IF;
 
-  -- Ensure shop row exists in shops table (in case claim happens before sync push)
-  INSERT INTO shops (id, name, created_at, updated_at, device_id)
-  VALUES (p_shop_id, 'Shop', now(), now(), gen_random_uuid())
-  ON CONFLICT (id) DO NOTHING;
-
   INSERT INTO shop_members (shop_id, user_id, role)
-  VALUES (p_shop_id, v_user_id, 'owner');
+  VALUES (p_shop_id, v_user_id, 'owner')
+  ON CONFLICT (shop_id, user_id) DO NOTHING;
 
   RETURN TRUE;
 END;
@@ -374,6 +372,7 @@ CREATE OR REPLACE FUNCTION sync_push(p_table TEXT, p_rows JSONB)
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user_id UUID;
@@ -492,6 +491,7 @@ BEGIN
         WHERE EXCLUDED.updated_at > expenses.updated_at;
       END IF;
     ELSE
+      -- Ledger tables are insert-only. Prevent modifications on conflict.
       IF p_table = 'stock_movements' THEN
         INSERT INTO stock_movements SELECT * FROM jsonb_populate_record(null::stock_movements, v_row)
         ON CONFLICT (id) DO NOTHING;
@@ -528,6 +528,7 @@ CREATE OR REPLACE FUNCTION sync_pull(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_user_id UUID;

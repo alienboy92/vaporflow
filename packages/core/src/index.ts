@@ -7,6 +7,7 @@
 
 export * from './types/index.js';
 export * from './money.js';
+export * from './uuid.js';
 export * from './repositories/category.js';
 export * from './repositories/product.js';
 export * from './repositories/stock.js';

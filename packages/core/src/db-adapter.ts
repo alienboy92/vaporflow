@@ -1,14 +1,15 @@
 /**
  * DbAdapter interface definition and SqliteTestAdapter implementation (better-sqlite3 in-memory).
+ * Phase 1 correction: Made asynchronous to support Capacitor operations and Electron IPC.
  */
 
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 
 export interface DbAdapter {
-  query<T = unknown>(sql: string, params?: unknown[]): T[];
-  batch(statements: { sql: string; params?: unknown[] }[]): void;
-  migrate(migrationsDir: string): void;
+  query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;
+  batch(statements: { sql: string; params?: unknown[] }[]): Promise<void>;
+  migrate(migrationsDir: string): Promise<void>;
 }
 
 /**
@@ -23,7 +24,7 @@ export class SqliteTestAdapter implements DbAdapter {
     this.db.pragma('foreign_keys = ON');
   }
 
-  query<T = unknown>(sql: string, params: unknown[] = []): T[] {
+  async query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
     const stmt = this.db.prepare(sql);
     if (sql.trim().toLowerCase().startsWith('select') || sql.trim().toLowerCase().startsWith('with')) {
       return stmt.all(...params) as T[];
@@ -33,7 +34,7 @@ export class SqliteTestAdapter implements DbAdapter {
     }
   }
 
-  batch(statements: { sql: string; params?: unknown[] }[]): void {
+  async batch(statements: { sql: string; params?: unknown[] }[]): Promise<void> {
     const runInTx = this.db.transaction((stmts: { sql: string; params?: unknown[] }[]) => {
       for (const s of stmts) {
         const stmt = this.db.prepare(s.sql);
@@ -43,7 +44,7 @@ export class SqliteTestAdapter implements DbAdapter {
     runInTx(statements);
   }
 
-  migrate(migrationsDir: string): void {
+  async migrate(migrationsDir: string): Promise<void> {
     // Create _migrations table
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS _migrations (

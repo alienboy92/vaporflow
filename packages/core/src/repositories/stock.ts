@@ -2,12 +2,12 @@
  * Stock repository and stock calculations.
  */
 import { DbAdapter } from '../db-adapter.js';
-import { StockMovement, StockOnHand } from '../types/schemas.js';
+import { StockMovement, StockOnHand, StockMovementSchema } from '../types/schemas.js';
 
 export class StockRepo {
   constructor(private db: DbAdapter) {}
 
-  getStockOnHand(shopId: string, variantId?: string): StockOnHand[] {
+  async getStockOnHand(shopId: string, variantId?: string): Promise<StockOnHand[]> {
     if (variantId) {
       return this.db.query<StockOnHand>(
         `SELECT variant_id, COALESCE(SUM(qty_change), 0) AS on_hand
@@ -26,9 +26,7 @@ export class StockRepo {
     );
   }
 
-  getLowStockVariants(shopId: string): { variant_id: string; on_hand: number; threshold: number }[] {
-    // Low stock rule: on_hand <= (variant threshold, or shop default threshold)
-    // Joined with variants and shops
+  async getLowStockVariants(shopId: string): Promise<{ variant_id: string; on_hand: number; threshold: number }[]> {
     return this.db.query(
       `SELECT
          v.id AS variant_id,
@@ -51,32 +49,33 @@ export class StockRepo {
     );
   }
 
-  addMovement(movement: StockMovement): void {
-    this.db.query(
+  async addMovement(movement: StockMovement): Promise<void> {
+    const validated = StockMovementSchema.parse(movement);
+    await this.db.query(
       `INSERT INTO stock_movements (id, shop_id, variant_id, qty_change, type, ref_type, ref_id, unit_cost, note, occurred_at, created_at, updated_at, deleted_at, device_id, dirty, server_updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
        ON CONFLICT(id) DO NOTHING`,
       [
-        movement.id,
-        movement.shop_id,
-        movement.variant_id,
-        movement.qty_change,
-        movement.type,
-        movement.ref_type,
-        movement.ref_id,
-        movement.unit_cost,
-        movement.note,
-        movement.occurred_at,
-        movement.created_at,
-        movement.updated_at,
-        movement.device_id,
-        movement.dirty,
-        movement.server_updated_at,
+        validated.id,
+        validated.shop_id,
+        validated.variant_id,
+        validated.qty_change,
+        validated.type,
+        validated.ref_type,
+        validated.ref_id,
+        validated.unit_cost,
+        validated.note,
+        validated.occurred_at,
+        validated.created_at,
+        validated.updated_at,
+        validated.device_id,
+        validated.dirty,
+        validated.server_updated_at,
       ]
     );
   }
 
-  getMovementsForVariant(shopId: string, variantId: string): StockMovement[] {
+  async getMovementsForVariant(shopId: string, variantId: string): Promise<StockMovement[]> {
     return this.db.query<StockMovement>(
       `SELECT * FROM stock_movements WHERE shop_id = ? AND variant_id = ? ORDER BY occurred_at DESC, created_at DESC`,
       [shopId, variantId]

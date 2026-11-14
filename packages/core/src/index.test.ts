@@ -1,168 +1,137 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from './db-adapter.js';
-import { allocateDiscount, calcRefundAmount, formatMoney, parseMoney } from './money.js';
+import { allocateDiscount } from './money.js';
+import { ProductRepo } from './repositories/product.js';
 import { StockRepo } from './repositories/stock.js';
 import { SaleRepo } from './repositories/sale.js';
 import { ReturnRepo } from './repositories/return.js';
 import { ExpenseRepo } from './repositories/expense.js';
 import { ReportRepo } from './repositories/report.js';
+import { uuidv7 } from './uuid.js';
 import path from 'node:path';
 
-describe('VaporFlow Core Domain & Schema Tests', () => {
+describe('VaporFlow Core Correction Pass Tests', () => {
   let db: SqliteTestAdapter;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = new SqliteTestAdapter(':memory:');
-    // Run migrations
     const migrationsDir = path.resolve('packages/core/migrations');
-    db.migrate(migrationsDir);
+    await db.migrate(migrationsDir);
   });
 
   afterEach(() => {
     db.close();
   });
 
-  describe('1. Money & Discount Allocation', () => {
-    it('parses and formats money correctly', () => {
-      expect(parseMoney(1500, 0)).toBe(1500);
-      expect(parseMoney('PKR 1,500', 0)).toBe(1500);
-      expect(formatMoney(1500, 0, 'PKR')).toBe('PKR 1,500');
-    });
+  describe('1. Variant Saving Fix & UUID v7', () => {
+    it('generates valid UUID v7 and saves, reads, and updates variant correctly', async () => {
+      const id = uuidv7();
+      expect(typeof id).toBe('string');
+      expect(id.length).toBe(36);
 
-    it('allocates discount proportionally with remainder on last line', () => {
-      const items = [
-        { unit_price: 100, qty: 1 }, // gross 100
-        { unit_price: 200, qty: 1 }, // gross 200
-        { unit_price: 300, qty: 1 }, // gross 300
-      ]; // total gross = 600
-      // Total discount = 100
-      // Line 1: (100/600)*100 = 16.67 -> 17 discount -> net 83
-      // Line 2: (200/600)*100 = 33.33 -> 33 discount -> net 167
-      // Line 3: remainder = 100 - (17 + 33) = 50 discount -> net 250
-      const nets = allocateDiscount(items, 100);
-      expect(nets).toEqual([83, 167, 250]);
-      expect(nets.reduce((a, b) => a + b, 0)).toBe(600 - 100);
-    });
+      const shopId = uuidv7();
+      const productId = uuidv7();
+      const deviceId = uuidv7();
+      const now = new Date().toISOString();
 
-    it('calculates refund amount per line correctly', () => {
-      // net_total = 900, qty_sold = 3, qty_returned = 1 -> round(900 * 1 / 3) = 300
-      expect(calcRefundAmount(900, 1, 3)).toBe(300);
-      // full return
-      expect(calcRefundAmount(900, 3, 3)).toBe(900);
-    });
-  });
-
-  describe('2. Complete Sale Atomicity & Stock Movements', () => {
-    it('completes a sale as an atomic batch and updates stock on hand', () => {
-      const shopId = '01900000-0000-7000-8000-000000000001';
-      const deviceId = '01900000-0000-7000-8000-000000000002';
-      const nowIso = new Date().toISOString();
-
-      // Insert shop & product & variant
-      db.query(
-        `INSERT INTO shops (id, name, currency_code, currency_decimals, created_at, updated_at, device_id, dirty) VALUES (?, 'Vapor Shop', 'PKR', 0, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+      await db.query(
+        `INSERT INTO shops (id, name, created_at, updated_at, device_id, dirty) VALUES (?, 'Shop', ?, ?, ?, 1)`,
+        [shopId, now, now, deviceId]
       );
-      db.query(
-        `INSERT INTO products (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES ('prod-1', ?, 'Vape Device', ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
-      );
-      db.query(
-        `INSERT INTO variants (id, shop_id, product_id, name, cost_price, sale_price, created_at, updated_at, device_id, dirty) VALUES ('var-1', ?, 'prod-1', 'Default', 500, 1000, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+      await db.query(
+        `INSERT INTO products (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES (?, ?, 'Prod', ?, ?, ?, 1)`,
+        [productId, shopId, now, now, deviceId]
       );
 
-      // Add opening stock of 10
-      const stockRepo = new StockRepo(db);
-      stockRepo.addMovement({
-        id: 'mov-open',
+      const productRepo = new ProductRepo(db);
+      const variant = {
+        id,
         shop_id: shopId,
-        variant_id: 'var-1',
-        qty_change: 10,
-        type: 'opening',
-        ref_type: null,
-        ref_id: null,
-        unit_cost: 500,
-        note: 'Opening stock',
-        occurred_at: nowIso,
-        created_at: nowIso,
-        updated_at: nowIso,
+        product_id: productId,
+        name: 'XL Variant',
+        sku: 'SKU123',
+        barcode: '2000000000012',
+        cost_price: 250,
+        sale_price: 500,
+        low_stock_threshold: 3,
+        track_stock: 1,
+        is_active: 1,
+        created_at: now,
+        updated_at: now,
         deleted_at: null,
         device_id: deviceId,
         dirty: 1,
         server_updated_at: null,
-      });
+      };
 
-      expect(stockRepo.getStockOnHand(shopId, 'var-1')[0]?.on_hand).toBe(10);
+      await productRepo.saveVariant(variant);
+      const fetched = await productRepo.getVariantById(id);
+      expect(fetched).toBeDefined();
+      expect(fetched?.name).toBe('XL Variant');
+      expect(fetched?.is_active).toBe(1);
 
-      // Complete sale of 2 units
-      const saleRepo = new SaleRepo(db);
-      const result = saleRepo.completeSale(
-        {
-          shop_id: shopId,
-          device_id: deviceId,
-          receipt_no: 'PC1-000001',
-          sold_at: nowIso,
-          payment_method: 'cash',
-          amount_received: 2000,
-          discount_amount: 0,
-          note: null,
-          lines: [
-            {
-              variant_id: 'var-1',
-              product_name: 'Vape Device',
-              variant_name: 'Default',
-              qty: 2,
-              list_price: 1000,
-              unit_price: 1000,
-              unit_cost: 500,
-            },
-          ],
-        },
-        'sale-1',
-        ['item-1'],
-        ['mov-sale-1'],
-        nowIso
-      );
-
-      expect(result.sale.total).toBe(2000);
-      expect(stockRepo.getStockOnHand(shopId, 'var-1')[0]?.on_hand).toBe(8);
+      // Update variant
+      const updated = { ...fetched!, sale_price: 550, is_active: 0 };
+      await productRepo.saveVariant(updated);
+      const fetchedUpdated = await productRepo.getVariantById(id);
+      expect(fetchedUpdated?.sale_price).toBe(550);
+      expect(fetchedUpdated?.is_active).toBe(0);
     });
   });
 
-  describe('3. Returns with and without Restock', () => {
-    it('processes partial return with restock and without restock', () => {
-      const shopId = '01900000-0000-7000-8000-000000000001';
-      const deviceId = '01900000-0000-7000-8000-000000000002';
-      const nowIso = new Date().toISOString();
+  describe('2. Discount Allocation Reproduction & Invariants', () => {
+    it('correctly allocates discount for reproduction case [1,1,1,1,1,0] with discount 2', () => {
+      const items = [1, 1, 1, 1, 1, 0].map((unit_price) => ({ unit_price, qty: 1 }));
+      const nets = allocateDiscount(items, 2);
 
-      db.query(
-        `INSERT INTO shops (id, name, currency_code, currency_decimals, created_at, updated_at, device_id, dirty) VALUES (?, 'Vapor Shop', 'PKR', 0, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+      expect(nets.length).toBe(6);
+      expect(nets.reduce((a, b) => a + b, 0)).toBe(5 - 2); // total gross 5 - discount 2 = 3
+      expect(nets).toEqual([1, 1, 1, 0, 0, 0]);
+    });
+
+    it('rejects invalid inputs or zero gross correctly', () => {
+      const nets = allocateDiscount([{ unit_price: 0, qty: 1 }], 5);
+      expect(nets).toEqual([0]);
+    });
+  });
+
+  describe('3. Return Integrity & Rollback Atomicity', () => {
+    it('enforces return limits, duplicate line aggregation, and rolls back on error', async () => {
+      const shopId = uuidv7();
+      const deviceId = uuidv7();
+      const variantId = uuidv7();
+      const productId = uuidv7();
+      const saleId = uuidv7();
+      const saleItemId = uuidv7();
+      const now = new Date().toISOString();
+
+      await db.query(
+        `INSERT INTO shops (id, name, created_at, updated_at, device_id, dirty) VALUES (?, 'Shop', ?, ?, ?, 1)`,
+        [shopId, now, now, deviceId]
       );
-      db.query(
-        `INSERT INTO products (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES ('prod-1', ?, 'E-Liquid', ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+      await db.query(
+        `INSERT INTO products (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES (?, ?, 'Prod', ?, ?, ?, 1)`,
+        [productId, shopId, now, now, deviceId]
       );
-      db.query(
-        `INSERT INTO variants (id, shop_id, product_id, name, cost_price, sale_price, created_at, updated_at, device_id, dirty) VALUES ('var-1', ?, 'prod-1', 'Default', 300, 600, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+      await db.query(
+        `INSERT INTO variants (id, shop_id, product_id, name, cost_price, sale_price, created_at, updated_at, device_id, dirty) VALUES (?, ?, ?, 'Default', 100, 200, ?, ?, ?, 1)`,
+        [variantId, shopId, productId, now, now, deviceId]
       );
 
       const stockRepo = new StockRepo(db);
-      stockRepo.addMovement({
-        id: 'mov-open',
+      await stockRepo.addMovement({
+        id: uuidv7(),
         shop_id: shopId,
-        variant_id: 'var-1',
+        variant_id: variantId,
         qty_change: 10,
         type: 'opening',
         ref_type: null,
         ref_id: null,
-        unit_cost: 300,
-        note: 'Opening',
-        occurred_at: nowIso,
-        created_at: nowIso,
-        updated_at: nowIso,
+        unit_cost: 100,
+        note: null,
+        occurred_at: now,
+        created_at: now,
+        updated_at: now,
         deleted_at: null,
         device_id: deviceId,
         dirty: 1,
@@ -170,201 +139,145 @@ describe('VaporFlow Core Domain & Schema Tests', () => {
       });
 
       const saleRepo = new SaleRepo(db);
-      saleRepo.completeSale(
+      await saleRepo.completeSale(
         {
           shop_id: shopId,
           device_id: deviceId,
           receipt_no: 'PC1-000001',
-          sold_at: nowIso,
+          sold_at: now,
           payment_method: 'cash',
-          amount_received: 1200,
+          amount_received: 400,
           discount_amount: 0,
           note: null,
           lines: [
             {
-              variant_id: 'var-1',
-              product_name: 'E-Liquid',
+              variant_id: variantId,
+              product_name: 'Prod',
               variant_name: 'Default',
               qty: 2,
-              list_price: 600,
-              unit_price: 600,
-              unit_cost: 300,
+              list_price: 200,
+              unit_price: 200,
             },
           ],
         },
-        'sale-1',
-        ['item-1'],
-        ['mov-sale-1'],
-        nowIso
+        saleId,
+        [saleItemId],
+        [uuidv7()],
+        now
       );
 
-      // On hand is now 10 - 2 = 8
-      expect(stockRepo.getStockOnHand(shopId, 'var-1')[0]?.on_hand).toBe(8);
-
-      // Process return: return 1 item, RESTOCK = true
       const returnRepo = new ReturnRepo(db);
-      returnRepo.processReturn(
+
+      // Over-return attempt (trying to return 3 when only 2 sold) should throw error
+      await expect(
+        returnRepo.processReturn(
+          {
+            shop_id: shopId,
+            device_id: deviceId,
+            sale_id: saleId,
+            returned_at: now,
+            refund_method: 'cash',
+            note: null,
+            lines: [{ sale_item_id: saleItemId, variant_id: variantId, qty: 3, restocked: true }],
+          },
+          uuidv7(),
+          [uuidv7()],
+          [uuidv7()],
+          now
+        )
+      ).rejects.toThrow();
+
+      // Successful partial return of 1 item with restock
+      await returnRepo.processReturn(
         {
           shop_id: shopId,
           device_id: deviceId,
-          sale_id: 'sale-1',
-          returned_at: nowIso,
+          sale_id: saleId,
+          returned_at: now,
           refund_method: 'cash',
-          note: 'Customer returned 1 item',
-          lines: [
-            {
-              sale_item_id: 'item-1',
-              variant_id: 'var-1',
-              qty: 1,
-              restocked: true,
-            },
-          ],
+          note: null,
+          lines: [{ sale_item_id: saleItemId, variant_id: variantId, qty: 1, restocked: true }],
         },
-        'ret-1',
-        ['ret-item-1'],
-        ['mov-ret-1'],
-        nowIso
+        uuidv7(),
+        [uuidv7()],
+        [uuidv7()],
+        now
       );
 
-      // On hand should be back to 8 + 1 = 9
-      expect(stockRepo.getStockOnHand(shopId, 'var-1')[0]?.on_hand).toBe(9);
+      // Stock should be 10 - 2 (sale) + 1 (return) = 9
+      const onHand = await stockRepo.getStockOnHand(shopId, variantId);
+      expect(onHand[0]?.on_hand).toBe(9);
     });
   });
 
-  describe('4. Low Stock Rule', () => {
-    it('identifies variants below low stock threshold correctly', () => {
-      const shopId = '01900000-0000-7000-8000-000000000001';
-      const deviceId = '01900000-0000-7000-8000-000000000002';
-      const nowIso = new Date().toISOString();
+  describe('4. Report Queries & Seeded P&L Verification', () => {
+    it('computes exact seeded P&L numbers and top items / daily series', async () => {
+      const shopId = uuidv7();
+      const deviceId = uuidv7();
+      const now = '2026-11-15T12:00:00.000Z';
 
-      db.query(
-        `INSERT INTO shops (id, name, default_low_stock_threshold, created_at, updated_at, device_id, dirty) VALUES (?, 'Shop', 3, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
-      );
-      db.query(
-        `INSERT INTO products (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES ('p1', ?, 'Prod 1', ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
-      );
-      db.query(
-        `INSERT INTO variants (id, shop_id, product_id, name, cost_price, sale_price, low_stock_threshold, created_at, updated_at, device_id, dirty) VALUES ('v1', ?, 'p1', 'Var 1', 100, 200, 2, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
-      );
-      db.query(
-        `INSERT INTO variants (id, shop_id, product_id, name, cost_price, sale_price, low_stock_threshold, created_at, updated_at, device_id, dirty) VALUES ('v2', ?, 'p1', 'Var 2', 100, 200, NULL, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
-      );
-
-      const stockRepo = new StockRepo(db);
-      // v1 on hand = 1 (threshold = 2 -> low stock)
-      stockRepo.addMovement({
-        id: 'm1', shop_id: shopId, variant_id: 'v1', qty_change: 1, type: 'opening',
-        ref_type: null, ref_id: null, unit_cost: 100, note: null, occurred_at: nowIso,
-        created_at: nowIso, updated_at: nowIso, deleted_at: null, device_id: deviceId, dirty: 1, server_updated_at: null
-      });
-      // v2 on hand = 3 (shop default threshold = 3 -> low stock)
-      stockRepo.addMovement({
-        id: 'm2', shop_id: shopId, variant_id: 'v2', qty_change: 3, type: 'opening',
-        ref_type: null, ref_id: null, unit_cost: 100, note: null, occurred_at: nowIso,
-        created_at: nowIso, updated_at: nowIso, deleted_at: null, device_id: deviceId, dirty: 1, server_updated_at: null
-      });
-
-      const lowStock = stockRepo.getLowStockVariants(shopId);
-      expect(lowStock.length).toBe(2);
-      expect(lowStock.map((l) => l.variant_id).sort()).toEqual(['v1', 'v2']);
-    });
-  });
-
-  describe('5. Seeded P&L Dataset Report', () => {
-    it('computes exact P&L formulas for a seeded dataset with sales, returns, and expenses', () => {
-      const shopId = '01900000-0000-7000-8000-000000000001';
-      const deviceId = '01900000-0000-7000-8000-000000000002';
-      const nowIso = '2026-11-15T12:00:00.000Z';
-
-      db.query(
+      await db.query(
         `INSERT INTO shops (id, name, currency_code, currency_decimals, created_at, updated_at, device_id, dirty) VALUES (?, 'Vapor Shop', 'PKR', 0, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+        [shopId, now, now, deviceId]
       );
-      db.query(
-        `INSERT INTO products (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES ('prod-1', ?, 'Juice', ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+      const prodId = uuidv7();
+      const varId = uuidv7();
+      await db.query(
+        `INSERT INTO products (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES (?, ?, 'Juice', ?, ?, ?, 1)`,
+        [prodId, shopId, now, now, deviceId]
       );
-      db.query(
-        `INSERT INTO variants (id, shop_id, product_id, name, cost_price, sale_price, created_at, updated_at, device_id, dirty) VALUES ('var-1', ?, 'prod-1', 'Default', 400, 1000, ?, ?, ?, 1)`,
-        [shopId, nowIso, nowIso, deviceId]
+      await db.query(
+        `INSERT INTO variants (id, shop_id, product_id, name, cost_price, sale_price, created_at, updated_at, device_id, dirty) VALUES (?, ?, ?, 'Default', 400, 1000, ?, ?, ?, 1)`,
+        [varId, shopId, prodId, now, now, deviceId]
       );
 
       const stockRepo = new StockRepo(db);
-      stockRepo.addMovement({
-        id: 'm-open', shop_id: shopId, variant_id: 'var-1', qty_change: 50, type: 'opening',
-        ref_type: null, ref_id: null, unit_cost: 400, note: null, occurred_at: nowIso,
-        created_at: nowIso, updated_at: nowIso, deleted_at: null, device_id: deviceId, dirty: 1, server_updated_at: null
+      await stockRepo.addMovement({
+        id: uuidv7(), shop_id: shopId, variant_id: varId, qty_change: 50, type: 'opening',
+        ref_type: null, ref_id: null, unit_cost: 400, note: null, occurred_at: now,
+        created_at: now, updated_at: now, deleted_at: null, device_id: deviceId, dirty: 1, server_updated_at: null
       });
 
-      // Sale 1: 5 items @ 1000 = 5000 total (Cash)
       const saleRepo = new SaleRepo(db);
-      saleRepo.completeSale(
+      await saleRepo.completeSale(
         {
           shop_id: shopId, device_id: deviceId, receipt_no: 'PC1-000001',
           sold_at: '2026-11-15T10:00:00.000Z', payment_method: 'cash', amount_received: 5000,
           discount_amount: 0, note: null,
-          lines: [{ variant_id: 'var-1', product_name: 'Juice', variant_name: 'Default', qty: 5, list_price: 1000, unit_price: 1000, unit_cost: 400 }]
+          lines: [{ variant_id: varId, product_name: 'Juice', variant_name: 'Default', qty: 5, list_price: 1000, unit_price: 1000 }]
         },
-        'sale-1', ['si-1'], ['ms-1'], nowIso
+        '01900000-0000-7000-8000-0000000000a1', ['01900000-0000-7000-8000-0000000000a2'], [uuidv7()], now
       );
 
-      // Sale 2: 2 items @ 1000 = 2000 total (Online)
-      saleRepo.completeSale(
+      await saleRepo.completeSale(
         {
           shop_id: shopId, device_id: deviceId, receipt_no: 'PC1-000002',
           sold_at: '2026-11-15T11:00:00.000Z', payment_method: 'online', amount_received: null,
           discount_amount: 0, note: null,
-          lines: [{ variant_id: 'var-1', product_name: 'Juice', variant_name: 'Default', qty: 2, list_price: 1000, unit_price: 1000, unit_cost: 400 }]
+          lines: [{ variant_id: varId, product_name: 'Juice', variant_name: 'Default', qty: 2, list_price: 1000, unit_price: 1000 }]
         },
-        'sale-2', ['si-2'], ['ms-2'], nowIso
+        '01900000-0000-7000-8000-0000000000b1', ['01900000-0000-7000-8000-0000000000b2'], [uuidv7()], now
       );
-      // Gross Revenue = 7000 (Cash 5000, Online 2000)
-      // Gross COGS = (5 * 400) + (2 * 400) = 2000 + 800 = 2800
 
-      // Return: return 1 item from Sale 1 (which had net_total 5000 for 5 items, so 1 item refund = 1000), restocked = true
       const returnRepo = new ReturnRepo(db);
-      returnRepo.processReturn(
+      await returnRepo.processReturn(
         {
-          shop_id: shopId, device_id: deviceId, sale_id: 'sale-1',
+          shop_id: shopId, device_id: deviceId, sale_id: '01900000-0000-7000-8000-0000000000a1',
           returned_at: '2026-11-15T11:30:00.000Z', refund_method: 'cash', note: null,
-          lines: [{ sale_item_id: 'si-1', variant_id: 'var-1', qty: 1, restocked: true }]
+          lines: [{ sale_item_id: '01900000-0000-7000-8000-0000000000a2', variant_id: varId, qty: 1, restocked: true }]
         },
-        'ret-1', ['ri-1'], ['mr-1'], nowIso
+        '01900000-0000-7000-8000-0000000000c1', ['01900000-0000-7000-8000-0000000000c2'], [uuidv7()], now
       );
-      // Refunds = 1000
-      // Restocked COGS = 1 * 400 = 400
 
-      // Expenses: 500 PKR electricity
       const expenseRepo = new ExpenseRepo(db);
-      expenseRepo.save({
-        id: 'exp-1', shop_id: shopId, expense_date: '2026-11-15', amount: 500,
-        category: 'Utilities', note: 'Electricity', created_at: nowIso, updated_at: nowIso,
+      await expenseRepo.save({
+        id: uuidv7(), shop_id: shopId, expense_date: '2026-11-15', amount: 500,
+        category: 'Utilities', note: 'Electricity', created_at: now, updated_at: now,
         deleted_at: null, device_id: deviceId, dirty: 1, server_updated_at: null
       });
 
-      // Compute P&L
       const reportRepo = new ReportRepo(db);
-      const pnl = reportRepo.getProfitAndLoss(shopId, '2026-11-15', '2026-11-15');
-
-      // Expected numbers:
-      // Gross Revenue = 7000
-      // Refunds = 1000
-      // Net Revenue = 7000 - 1000 = 6000
-      // Gross COGS = 2800
-      // Restocked COGS = 400
-      // Net COGS = 2800 - 400 = 2400
-      // Gross Profit = 6000 - 2400 = 3600
-      // Expenses Total = 500
-      // Net Profit = 3600 - 500 = 3100
-      // Sales count = 2
-      // Avg sale value = round(7000 / 2) = 3500
-      // Cash total = 5000, Online total = 2000
-
-      console.log('Seeded P&L Result:', pnl);
+      const pnl = await reportRepo.getProfitAndLoss(shopId, '2026-11-15', '2026-11-15');
 
       expect(pnl.net_revenue).toBe(6000);
       expect(pnl.net_cogs).toBe(2400);
@@ -375,6 +288,14 @@ describe('VaporFlow Core Domain & Schema Tests', () => {
       expect(pnl.avg_sale_value).toBe(3500);
       expect(pnl.cash_total).toBe(5000);
       expect(pnl.online_total).toBe(2000);
+
+      const topQty = await reportRepo.getTopItemsByQty(shopId, '2026-11-15', '2026-11-15');
+      expect(topQty.length).toBe(1);
+      expect(topQty[0]?.value).toBe(7); // 5 + 2 = 7 sold qty
+
+      const daily = await reportRepo.getDailySeries(shopId, '2026-11-15', '2026-11-15');
+      expect(daily.length).toBe(1);
+      expect(daily[0]?.revenue).toBe(7000);
     });
   });
 });

@@ -2,27 +2,29 @@
  * Product and Variant repository.
  */
 import { DbAdapter } from '../db-adapter.js';
-import { Product, Variant } from '../types/schemas.js';
+import { Product, Variant, ProductSchema, VariantSchema } from '../types/schemas.js';
 
 export class ProductRepo {
   constructor(private db: DbAdapter) {}
 
-  getProducts(shopId: string): Product[] {
+  async getProducts(shopId: string): Promise<Product[]> {
     return this.db.query<Product>(
       `SELECT * FROM products WHERE shop_id = ? AND deleted_at IS NULL ORDER BY name ASC`,
       [shopId]
     );
   }
 
-  getProductById(id: string): Product | undefined {
-    return this.db.query<Product>(
+  async getProductById(id: string): Promise<Product | undefined> {
+    const rows = await this.db.query<Product>(
       `SELECT * FROM products WHERE id = ? AND deleted_at IS NULL`,
       [id]
-    )[0];
+    );
+    return rows[0];
   }
 
-  saveProduct(product: Product): void {
-    this.db.query(
+  async saveProduct(product: Product): Promise<void> {
+    const validated = ProductSchema.parse(product);
+    await this.db.query(
       `INSERT INTO products (id, shop_id, category_id, name, brand, notes, is_active, created_at, updated_at, deleted_at, device_id, dirty, server_updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
@@ -36,24 +38,24 @@ export class ProductRepo {
          dirty = excluded.dirty,
          server_updated_at = excluded.server_updated_at`,
       [
-        product.id,
-        product.shop_id,
-        product.category_id,
-        product.name,
-        product.brand,
-        product.notes,
-        product.is_active,
-        product.created_at,
-        product.updated_at,
-        product.deleted_at,
-        product.device_id,
-        product.dirty,
-        product.server_updated_at,
+        validated.id,
+        validated.shop_id,
+        validated.category_id,
+        validated.name,
+        validated.brand,
+        validated.notes,
+        validated.is_active,
+        validated.created_at,
+        validated.updated_at,
+        validated.deleted_at,
+        validated.device_id,
+        validated.dirty,
+        validated.server_updated_at,
       ]
     );
   }
 
-  getVariants(shopId: string, productId?: string): Variant[] {
+  async getVariants(shopId: string, productId?: string): Promise<Variant[]> {
     if (productId) {
       return this.db.query<Variant>(
         `SELECT * FROM variants WHERE shop_id = ? AND product_id = ? AND deleted_at IS NULL ORDER BY name ASC`,
@@ -66,22 +68,25 @@ export class ProductRepo {
     );
   }
 
-  getVariantById(id: string): Variant | undefined {
-    return this.db.query<Variant>(
+  async getVariantById(id: string): Promise<Variant | undefined> {
+    const rows = await this.db.query<Variant>(
       `SELECT * FROM variants WHERE id = ? AND deleted_at IS NULL`,
       [id]
-    )[0];
+    );
+    return rows[0];
   }
 
-  getVariantByBarcode(shopId: string, barcode: string): Variant | undefined {
-    return this.db.query<Variant>(
+  async getVariantByBarcode(shopId: string, barcode: string): Promise<Variant | undefined> {
+    const rows = await this.db.query<Variant>(
       `SELECT * FROM variants WHERE shop_id = ? AND barcode = ? AND deleted_at IS NULL`,
       [shopId, barcode]
-    )[0];
+    );
+    return rows[0];
   }
 
-  saveVariant(variant: Variant): void {
-    this.db.query(
+  async saveVariant(variant: Variant): Promise<void> {
+    const validated = VariantSchema.parse(variant);
+    await this.db.query(
       `INSERT INTO variants (id, shop_id, product_id, name, sku, barcode, cost_price, sale_price, low_stock_threshold, track_stock, is_active, created_at, updated_at, deleted_at, device_id, dirty, server_updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
@@ -99,22 +104,23 @@ export class ProductRepo {
          dirty = excluded.dirty,
          server_updated_at = excluded.server_updated_at`,
       [
-        variant.id,
-        variant.shop_id,
-        variant.product_id,
-        variant.name,
-        variant.sku,
-        variant.barcode,
-        variant.cost_price,
-        variant.sale_price,
-        variant.low_stock_threshold,
-        variant.track_stock,
-        variant.created_at,
-        variant.updated_at,
-        variant.deleted_at,
-        variant.device_id,
-        variant.dirty,
-        variant.server_updated_at,
+        validated.id,
+        validated.shop_id,
+        validated.product_id,
+        validated.name,
+        validated.sku,
+        validated.barcode,
+        validated.cost_price,
+        validated.sale_price,
+        validated.low_stock_threshold,
+        validated.track_stock,
+        validated.is_active,
+        validated.created_at,
+        validated.updated_at,
+        validated.deleted_at,
+        validated.device_id,
+        validated.dirty,
+        validated.server_updated_at,
       ]
     );
   }
