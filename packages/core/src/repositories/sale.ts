@@ -75,7 +75,13 @@ export class SaleRepo {
       throw new Error('Inconsistent ID array lengths for sale completion');
     }
 
-    // Determine receipt number using per-device counter in settings
+    // Determine the receipt number using the per-device counter in settings.
+    // Stored counter semantics: the value is the LAST-USED number; the next
+    // receipt uses value + 1. The read happens before the batch (candidate
+    // number); correctness under concurrency is enforced by the unique index
+    // idx_sales_receipt_no_unique (migration 003): if two completions race and
+    // compute the same candidate, exactly one batch commits and the loser
+    // rolls back — including its counter write — without consuming a number.
     const devices = await this.db.query<{ code: string }>(
       `SELECT code FROM devices WHERE id = ? AND deleted_at IS NULL`,
       [validatedInput.device_id],
@@ -243,7 +249,7 @@ export class SaleRepo {
           'sale',
           saleId,
           line.unit_cost,
-          `Sale receipt ${validatedInput.receipt_no}`,
+          `Sale receipt ${receipt_no}`,
           validatedInput.sold_at,
           nowIso,
           nowIso,
@@ -263,7 +269,20 @@ export class SaleRepo {
     statements.push(
       ...itemIds.map((id) => ({ sql: 'DELETE FROM _operation_guards WHERE id = ?', params: [id] })),
     );
-    await this.db.batch(statements);
+    try {
+      await this.db.batch(statements);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('UNIQUE constraint failed') &&
+        error.message.includes('receipt_no')
+      ) {
+        throw new Error(
+          'Receipt number conflict: another sale completed concurrently. Retry the sale to get the next number.',
+        );
+      }
+      throw error;
+    }
 
     return { sale, items };
   }

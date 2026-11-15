@@ -18,8 +18,23 @@ let startup: Promise<PlatformAdapters> | undefined;
 const unsupported = (feature: string): Promise<never> =>
   Promise.reject(new Error(`${feature} is not implemented in Phase 2`));
 
+/** Desktop file share: save the payload through a blob download. */
+async function shareFileDesktop(name: string, data: Uint8Array | string, mime: string): Promise<void> {
+  const bytes =
+    data instanceof Uint8Array ? new Uint8Array(data) : new TextEncoder().encode(data);
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 async function initialize(): Promise<PlatformAdapters> {
-  let database: Pick<PlatformAdapters, 'db' | 'diagnostics' | 'platform'>;
+  let database: Pick<PlatformAdapters, 'db' | 'diagnostics' | 'platform' | 'share'>;
   if (window.vaporflow?.platform === 'desktop') {
     const api = window.vaporflow;
     database = {
@@ -31,6 +46,9 @@ async function initialize(): Promise<PlatformAdapters> {
         },
         batch: (statements) => api.db.batch(BatchSchema.parse(statements)),
         migrate: () => api.db.migrate(),
+      },
+      share: {
+        shareFile: (name, data, mime) => shareFileDesktop(name, data, mime),
       },
       diagnostics: api.diagnostics
         ? {
@@ -68,7 +86,10 @@ async function initialize(): Promise<PlatformAdapters> {
       printReceipt: () => unsupported('Receipt printing'),
       printLabels: () => unsupported('Label printing'),
     },
-    share: { shareFile: () => unsupported('File sharing') },
+    share:
+      database.share ?? {
+        shareFile: () => unsupported('File sharing'),
+      },
     file: {
       exportBackup: () => unsupported('Backup export'),
       importBackup: () => unsupported('Backup import'),

@@ -11,8 +11,9 @@ import {
   runDevelopmentDbCheck,
   type DiagnosticsAdapter,
 } from '@vaporflow/core';
+import { capacitorShare } from './share.js';
 export { CapacitorDbAdapter } from './capacitor-adapter.js';
-export { Capacitor };
+export { Capacitor } from '@capacitor/core';
 let primary: CapacitorDbAdapter | undefined;
 let diagnostics: CapacitorDbAdapter | undefined;
 async function runNativeContract(): Promise<string[]> {
@@ -63,5 +64,5 @@ export async function createMobileDatabase(enableDiagnostics: boolean) {
       runContract: runNativeContract,
     };
   }
-  return { db: primary, diagnostics: diagnosticAdapter };
+  return { db: primary, diagnostics: diagnosticAdapter, share: capacitorShare };
 }

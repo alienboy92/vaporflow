@@ -295,4 +295,234 @@ describe('Phase 5: Offline Checkout, Receipts, and Counter', () => {
     const stock = onHandRows[0]?.on_hand ?? 0;
     expect(stock).toBe(-5);
   });
+
+  it('writes the computed receipt number into the sale movement note', async () => {
+    await saleRepo.completeSale(
+      {
+        shop_id: shopId,
+        device_id: deviceId,
+        sold_at: now,
+        payment_method: 'cash',
+        amount_received: 1000,
+        discount_amount: 0,
+        note: null,
+        lines: [
+          {
+            variant_id: variantId,
+            product_name: 'E-Liquid',
+            variant_name: 'Menthol 6mg',
+            qty: 1,
+            list_price: 1000,
+            unit_price: 1000,
+          },
+        ],
+      },
+      uuidv7(),
+      [uuidv7()],
+      [uuidv7()],
+      now,
+    );
+
+    const movements = await db.query<{ note: string | null }>(
+      `SELECT note FROM stock_movements WHERE type = 'sale'`,
+    );
+    expect(movements).toHaveLength(1);
+    expect(movements[0]!.note).toBe('Sale receipt PC1-000001');
+  });
+
+  it('loses the concurrent completion race loudly and the retry gets the next number', async () => {
+    const complete = () =>
+      saleRepo.completeSale(
+        {
+          shop_id: shopId,
+          device_id: deviceId,
+          sold_at: now,
+          payment_method: 'cash',
+          amount_received: 1000,
+          discount_amount: 0,
+          note: null,
+          lines: [
+            {
+              variant_id: variantId,
+              product_name: 'E-Liquid',
+              variant_name: 'Menthol 6mg',
+              qty: 1,
+              list_price: 1000,
+              unit_price: 1000,
+            },
+          ],
+        },
+        uuidv7(),
+        [uuidv7()],
+        [uuidv7()],
+        now,
+      );
+
+    // Both completions read the counter before either batch commits, so both
+    // compute PC1-000001. The unique index must let exactly one commit and
+    // roll the loser back (no sale, no consumed number).
+    const settled = await Promise.allSettled([complete(), complete()]);
+
+    const fulfilled = settled.filter((r) => r.status === 'fulfilled');
+    const rejected = settled.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(Error);
+    expect((rejected[0] as PromiseRejectedResult).reason.message).toContain('Receipt number conflict');
+
+    const sales = await db.query<{ receipt_no: string }>(
+      `SELECT receipt_no FROM sales ORDER BY receipt_no`,
+    );
+    expect(sales).toHaveLength(1);
+    expect(sales[0]!.receipt_no).toBe('PC1-000001');
+
+    // The loser's counter write rolled back: stored value is last-used = 1.
+    const counter = await db.query<{ value: string | null }>(
+      `SELECT value FROM settings WHERE key = 'receipt_counter'`,
+    );
+    expect(counter[0]!.value).toBe('1');
+
+    // Retry after the conflict gets the next number, not a duplicate.
+    const retry = await complete();
+    expect(retry.sale.receipt_no).toBe('PC1-000002');
+  });
+
+  it('persists the receipt counter across a close/reopen restart', async () => {
+    const os = await import('node:os');
+    const fs = await import('node:fs');
+    const dbFile = path.join(os.tmpdir(), `vaporflow-phase5-restart-${uuidv7()}.db`);
+
+    const completeOne = async (adapter: SqliteTestAdapter): Promise<string> => {
+      const repo = new SaleRepo(adapter);
+      const res = await repo.completeSale(
+        {
+          shop_id: shopId,
+          device_id: deviceId,
+          sold_at: now,
+          payment_method: 'cash',
+          amount_received: 1000,
+          discount_amount: 0,
+          note: null,
+          lines: [
+            {
+              variant_id: variantId,
+              product_name: 'E-Liquid',
+              variant_name: 'Menthol 6mg',
+              qty: 1,
+              list_price: 1000,
+              unit_price: 1000,
+            },
+          ],
+        },
+        uuidv7(),
+        [uuidv7()],
+        [uuidv7()],
+        now,
+      );
+      return res.sale.receipt_no;
+    };
+
+    // First session: set up data and complete one sale.
+    const first = new SqliteTestAdapter(dbFile);
+    try {
+      await first.migrate(path.resolve('packages/core/migrations'));
+      const shopRepo1 = new ShopRepo(first);
+      const productRepo1 = new ProductRepo(first);
+      await shopRepo1.saveFirstRun(
+        {
+          id: shopId,
+          shop_id: shopId,
+          name: 'Restart Shop',
+          address: null,
+          phone: null,
+          logo_base64: null,
+          show_logo_on_receipt: 1,
+          currency_code: 'PKR',
+          currency_decimals: 0,
+          receipt_footer: 'Thank you',
+          default_low_stock_threshold: 3,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          device_id: deviceId,
+          dirty: 0,
+          server_updated_at: null,
+        },
+        {
+          id: deviceId,
+          shop_id: shopId,
+          name: 'POS',
+          code: 'PC1',
+          last_seen_at: now,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          device_id: deviceId,
+          dirty: 0,
+          server_updated_at: null,
+        },
+      );
+      await productRepo1.saveProductWithVariantsAndOpeningStock(
+        {
+          id: uuidv7(),
+          shop_id: shopId,
+          category_id: null,
+          name: 'E-Liquid',
+          brand: null,
+          notes: null,
+          is_active: 1,
+          created_at: now,
+          updated_at: now,
+          deleted_at: null,
+          device_id: deviceId,
+          dirty: 1,
+          server_updated_at: null,
+        },
+        [
+          {
+            id: variantId,
+            shop_id: shopId,
+            product_id: uuidv7(),
+            name: 'Menthol 6mg',
+            sku: null,
+            barcode: null,
+            cost_price: 500,
+            sale_price: 1000,
+            low_stock_threshold: null,
+            track_stock: 1,
+            is_active: 1,
+            created_at: now,
+            updated_at: now,
+            deleted_at: null,
+            device_id: deviceId,
+            dirty: 1,
+            server_updated_at: null,
+          },
+        ],
+        [{ variantId, qty: 10, unitCost: 500 }],
+        deviceId,
+        now,
+      );
+      expect(await completeOne(first)).toBe('PC1-000001');
+    } finally {
+      first.close();
+    }
+
+    // Second session (restart): migrate from the bundled migrations (same
+    // names as the applied directory files) and complete the next sale.
+    try {
+      const second = new SqliteTestAdapter(dbFile);
+      await second.migrate();
+      expect(await completeOne(second)).toBe('PC1-000002');
+      second.close();
+    } finally {
+      for (const suffix of ['', '-wal', '-shm']) {
+        try {
+          fs.rmSync(dbFile + suffix, { force: true });
+        } catch {
+          // Best-effort cleanup; the assertion above is what matters.
+        }
+      }
+    }
+  });
 });

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useDb } from '../context/DbProvider';
+import { useNavigate } from 'react-router-dom';
+import { useDb, usePlatform } from '../context/DbProvider';
 import {
   ProductRepo,
   StockRepo,
@@ -8,10 +9,14 @@ import {
   DeviceRepo,
   uuidv7,
   formatMoney,
+  roundRatio,
 } from '@vaporflow/core';
 import type { Shop, Variant, Sale, SaleItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { buildReceiptHtml, RECEIPT_CSS } from '../utils/receipt-html';
+import { buildReceiptPdf } from '../utils/receipt-pdf';
+import { printHtml } from '../utils/print';
 
 interface CartLine {
   variant_id: string;
@@ -26,6 +31,7 @@ interface CartLine {
 
 export function SaleScreen() {
   const db = useDb();
+  const navigate = useNavigate();
   const [shop, setShop] = useState<Shop | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [variants, setVariants] = useState<(Variant & { product_name: string; on_hand: number })[]>([]);
@@ -33,16 +39,23 @@ export function SaleScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online'>('cash');
   const [amountReceivedInput, setAmountReceivedInput] = useState('');
+  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
   const [discountInput, setDiscountInput] = useState('0');
+  const [discountPercentInput, setDiscountPercentInput] = useState('0');
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState('');
+  // Scanned value with no matching product; enables the create-product offer.
+  const [notFoundQuery, setNotFoundQuery] = useState('');
 
   // Completed receipt modal state
   const [completedResult, setCompletedResult] = useState<{ sale: Sale; items: SaleItem[] } | null>(null);
 
   const scanInputRef = useRef<HTMLInputElement>(null);
+  // Synchronous double-submit guard: React state cannot reflect two keydown
+  // events fired within the same frame (F9 double-tap), so the ref decides.
+  const completingRef = useRef(false);
 
   const loadCatalog = useCallback(async () => {
     try {
@@ -125,8 +138,28 @@ export function SaleScreen() {
     focusScan();
   }, [variants, focusScan]);
 
+  // Totals for the current cart; shared by the summary display and completion.
+  const computeTotals = useCallback(() => {
+    const subtotal = cart.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
+    const percent = Math.min(100, Math.max(0, parseInt(discountPercentInput || '0', 10)));
+    // Integer-safe percent conversion using core roundRatio (half rounds up).
+    const percentDiscount = Number(roundRatio(BigInt(subtotal) * BigInt(percent), 100n));
+    const rawDiscount =
+      discountMode === 'amount'
+        ? Math.max(0, parseInt(discountInput || '0', 10))
+        : percentDiscount;
+    const discountExceedsSubtotal = rawDiscount > subtotal;
+    const discountAmount = Math.min(rawDiscount, subtotal);
+    const total = subtotal - discountAmount;
+    return { subtotal, discountAmount, discountExceedsSubtotal, total };
+  }, [cart, discountMode, discountInput, discountPercentInput]);
+
   const handleCompleteSale = useCallback(async () => {
     if (!shop || !deviceId || cart.length === 0) return;
+    // Synchronous guard: two F9 keydowns in the same tick both pass the
+    // React state check, so the ref decides before any async work starts.
+    if (completingRef.current) return;
+    completingRef.current = true;
     setCompleting(true);
     setError('');
 
@@ -137,12 +170,12 @@ export function SaleScreen() {
       const movementIds = cart.map(() => uuidv7());
       const nowIso = new Date().toISOString();
 
-      const discountAmount = Math.max(0, parseInt(discountInput || '0', 10));
-      const total = Math.max(
-        0,
-        cart.reduce((sum, item) => sum + item.unit_price * item.qty, 0) - discountAmount,
-      );
-      const amountReceived = paymentMethod === 'cash' ? parseInt(amountReceivedInput || '0', 10) : total;
+      const totals = computeTotals();
+      if (totals.discountExceedsSubtotal) {
+        setError('Discount cannot exceed the subtotal.');
+        return;
+      }
+      const amountReceived = paymentMethod === 'cash' ? parseInt(amountReceivedInput || '0', 10) : totals.total;
 
       const input = {
         shop_id: shop.id,
@@ -150,7 +183,7 @@ export function SaleScreen() {
         sold_at: nowIso,
         payment_method: paymentMethod,
         amount_received: paymentMethod === 'cash' ? amountReceived : null,
-        discount_amount: discountAmount,
+        discount_amount: totals.discountAmount,
         note: note.trim() || null,
         lines: cart.map((c) => ({
           variant_id: c.variant_id,
@@ -167,15 +200,19 @@ export function SaleScreen() {
       notifyStockChanged();
       setCart([]);
       setDiscountInput('0');
+      setDiscountPercentInput('0');
       setAmountReceivedInput('');
       setNote('');
+      // Refresh the catalog so stock displays reflect the completed sale.
+      void loadCatalog();
     } catch (err: unknown) {
       globalErrorLogger.log(err);
       setError(err instanceof Error ? err.message : 'Failed to complete sale');
     } finally {
+      completingRef.current = false;
       setCompleting(false);
     }
-  }, [shop, deviceId, cart, paymentMethod, discountInput, amountReceivedInput, note, db]);
+  }, [shop, deviceId, cart, paymentMethod, amountReceivedInput, note, db, computeTotals, loadCatalog]);
 
   // Keyboard shortcuts: F2 (focus scan), F9 (complete sale), Esc (clear cart)
   useEffect(() => {
@@ -185,7 +222,7 @@ export function SaleScreen() {
         focusScan();
       } else if (e.key === 'F9') {
         e.preventDefault();
-        if (cart.length > 0 && !completing) {
+        if (cart.length > 0 && !completingRef.current) {
           void handleCompleteSale();
         }
       } else if (e.key === 'Escape') {
@@ -199,7 +236,7 @@ export function SaleScreen() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, completing, completedResult, focusScan, handleCompleteSale]);
+  }, [cart, completedResult, focusScan, handleCompleteSale]);
 
   useEffect(() => {
     focusScan();
@@ -237,9 +274,22 @@ export function SaleScreen() {
     if (matches.length === 1) {
       addToCartByVariantId(matches[0]!.id);
     } else if (matches.length === 0) {
-      setError(`No product found matching "${query}". Use Products catalog to add items.`);
-      setTimeout(() => setError(''), 4000);
+      setNotFoundQuery(query);
+      setError(`No product found matching "${query}".`);
+      setTimeout(() => {
+        setError('');
+        setNotFoundQuery('');
+      }, 8000);
     }
+  }
+
+  // Offer: jump to the products catalog with the scanned barcode prefilled.
+  function handleCreateFromScan() {
+    const barcode = notFoundQuery;
+    setNotFoundQuery('');
+    setError('');
+    setSearchQuery('');
+    navigate('/products', { state: { prefillBarcode: barcode } });
   }
 
   // Cart quantity / price / remove handlers
@@ -268,11 +318,12 @@ export function SaleScreen() {
   }
 
   // Totals calculation
-  const subtotal = cart.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
-  const discountAmount = Math.max(0, parseInt(discountInput || '0', 10));
-  const total = Math.max(0, subtotal - discountAmount);
+  const { subtotal, discountExceedsSubtotal, total } = computeTotals();
   const amountReceived = paymentMethod === 'cash' ? parseInt(amountReceivedInput || '0', 10) : total;
   const changeDue = Math.max(0, amountReceived - total);
+  // Non-blocking warning: completing a cash sale short still succeeds on
+  // purpose (no data blocking), but the cashier must see it before F9.
+  const cashShort = paymentMethod === 'cash' && amountReceivedInput !== '' && amountReceived < total;
 
   if (loading) {
     return <div className="p-6 text-gray-600">Loading checkout...</div>;
@@ -290,8 +341,16 @@ export function SaleScreen() {
           </p>
         </div>
         {error && (
-          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
-            {error}
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2 flex-wrap">
+            <span>{error}</span>
+            {notFoundQuery && (
+              <button
+                onClick={handleCreateFromScan}
+                className="bg-red-700 hover:bg-red-800 text-white px-3 py-1.5 rounded font-medium min-h-11"
+              >
+                Create product with this barcode
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -408,16 +467,62 @@ export function SaleScreen() {
                   <span>Subtotal</span>
                   <span>{formatMoney(subtotal, 0, currency)}</span>
                 </div>
-                <div className="flex justify-between items-center text-gray-600">
-                  <span>Discount ({currency})</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={discountInput}
-                    onChange={(e) => setDiscountInput(e.target.value)}
-                    className="w-28 border rounded px-2 py-1 text-right text-sm"
-                  />
+                <div className="flex justify-between items-center text-gray-600 gap-2">
+                  {discountMode === 'amount' ? (
+                    <span>Discount ({currency})</span>
+                  ) : (
+                    <span>Discount (%)</span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div className="flex border rounded overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setDiscountMode('amount')}
+                        className={`px-3 py-1 text-xs font-medium min-h-11 ${
+                          discountMode === 'amount' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        aria-pressed={discountMode === 'amount'}
+                      >
+                        {currency}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountMode('percent')}
+                        className={`px-3 py-1 text-xs font-medium min-h-11 ${
+                          discountMode === 'percent' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        aria-pressed={discountMode === 'percent'}
+                      >
+                        %
+                      </button>
+                    </div>
+                    {discountMode === 'amount' ? (
+                      <input
+                        type="number"
+                        min="0"
+                        value={discountInput}
+                        onChange={(e) => setDiscountInput(e.target.value)}
+                        className="w-28 border rounded px-2 py-1 text-right text-sm"
+                        aria-label="Discount amount"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={discountPercentInput}
+                        onChange={(e) => setDiscountPercentInput(e.target.value)}
+                        className="w-28 border rounded px-2 py-1 text-right text-sm"
+                        aria-label="Discount percent"
+                      />
+                    )}
+                  </div>
                 </div>
+                {discountExceedsSubtotal && (
+                  <div role="alert" className="text-xs text-red-600">
+                    Discount cannot exceed the subtotal.
+                  </div>
+                )}
                 <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t">
                   <span>Total</span>
                   <span>{formatMoney(total, 0, currency)}</span>
@@ -466,6 +571,12 @@ export function SaleScreen() {
                 </div>
               )}
 
+              {cashShort && (
+                <div role="alert" className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded text-sm">
+                  Cash received is less than the total. The sale can still complete, but change due will be negative.
+                </div>
+              )}
+
               <div>
                 <input
                   type="text"
@@ -477,7 +588,7 @@ export function SaleScreen() {
               </div>
 
               <button
-                disabled={completing || cart.length === 0}
+                disabled={completing || cart.length === 0 || discountExceedsSubtotal}
                 onClick={() => void handleCompleteSale()}
                 className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-gray-300 text-white font-bold py-4 rounded-xl text-lg shadow transition-colors min-h-12 flex items-center justify-center gap-2"
               >
@@ -581,19 +692,30 @@ interface ReceiptModalProps {
 
 function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
   const { sale, items } = result;
+  const platform = usePlatform();
   const currency = shop.currency_code ?? 'PKR';
 
+  // Prints exactly the receipt content through a hidden iframe document with
+  // an 80mm page size — never the whole POS page.
   function handlePrint() {
-    window.print();
+    try {
+      printHtml(buildReceiptHtml(sale, items, shop), RECEIPT_CSS, `Receipt ${sale.receipt_no}`);
+    } catch (err) {
+      globalErrorLogger.log(err);
+      window.alert('Could not open the print dialog. Check that a printer is available.');
+    }
   }
 
-  function handleShare() {
-    const text = `VaporFlow Receipt #${sale.receipt_no}\nDate: ${new Date(sale.sold_at).toLocaleString()}\nTotal: ${formatMoney(sale.total, 0, currency)}\nThank you!`;
-    if (navigator.share) {
-      navigator.share({ title: `Receipt ${sale.receipt_no}`, text }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(text);
-      alert('Receipt copied to clipboard!');
+  // Shares the receipt as a PDF file through the platform share adapter
+  // (Android share sheet; desktop saves the file).
+  async function handleShare() {
+    const fileName = `receipt-${sale.receipt_no}.pdf`;
+    try {
+      const bytes = buildReceiptPdf(sale, items, shop);
+      await platform.share.shareFile(fileName, bytes, 'application/pdf');
+    } catch (err) {
+      globalErrorLogger.log(err);
+      window.alert('Could not share the receipt. The file may not be shareable on this device.');
     }
   }
 
@@ -705,7 +827,7 @@ function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
             onClick={onClose}
             className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2.5 rounded-lg font-medium text-sm min-h-11 flex-1 sm:flex-none"
           >
-            New Sale (F9)
+            New Sale
           </button>
         </div>
       </div>

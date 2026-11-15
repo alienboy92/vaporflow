@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useDb } from '../context/DbProvider';
 import {
   ProductRepo,
@@ -6,11 +7,15 @@ import {
   CategoryRepo,
   ShopRepo,
   generateEAN13,
+  validateBarcode,
+  formatMoney,
   uuidv7,
 } from '@vaporflow/core';
 import type { Product, Variant, Category, Shop } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { printHtml } from '../utils/print';
+import { barcodeSvgString } from '../utils/barcode-svg';
 
 interface VariantFormState {
   id: string;
@@ -25,8 +30,29 @@ interface VariantFormState {
   isNew: boolean;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+/** A4 portrait label sheet: 3 columns x 8 rows (24 labels per page). */
+const LABEL_CSS = `
+@page { size: A4 portrait; margin: 10mm; }
+.sheet { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 30mm; gap: 3mm; font-family: Arial, sans-serif; }
+.cell { text-align: center; border: 0.2mm solid #999; border-radius: 1mm; padding: 2mm; page-break-inside: avoid; display: flex; flex-direction: column; justify-content: center; gap: 1mm; overflow: hidden; }
+.cell .name { font-size: 9pt; font-weight: bold; }
+.cell .variant { font-size: 8pt; color: #333; }
+.cell .price { font-size: 10pt; font-weight: bold; }
+.cell .barcode svg { width: 100%; max-width: 30mm; height: auto; }
+`;
+
 export function ProductsScreen() {
   const db = useDb();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [variantsMap, setVariantsMap] = useState<Record<string, Variant[]>>({});
@@ -50,6 +76,10 @@ export function ProductsScreen() {
   const [showNewCatInput, setShowNewCatInput] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
+
+  // Label printing: the product being labelled and its selected variant ids.
+  const [labelProduct, setLabelProduct] = useState<Product | null>(null);
+  const [labelSelected, setLabelSelected] = useState<string[]>([]);
 
   const barcodeInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -95,6 +125,58 @@ export function ProductsScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // SaleScreen scan-not-found offer: open the create modal with the scanned
+  // barcode prefilled, then clear the navigation state so a refresh or back
+  // navigation does not reopen the modal.
+  useEffect(() => {
+    const state = location.state as { prefillBarcode?: unknown } | null;
+    const prefill = typeof state?.prefillBarcode === 'string' ? state.prefillBarcode : '';
+    if (!prefill) return;
+    handleOpenCreate();
+    setFormVariants((prev) =>
+      prev.map((variant, index) => (index === 0 ? { ...variant, barcode: prefill } : variant)),
+    );
+    navigate(location.pathname, { replace: true, state: null });
+    // Open once per incoming navigation state only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, location.pathname, navigate]);
+
+  function handleOpenLabels(product: Product) {
+    const vars = (variantsMap[product.id] || []).filter((v) => v.is_active === 1 && v.barcode);
+    setLabelProduct(product);
+    setLabelSelected(vars.map((v) => v.id));
+  }
+
+  function toggleLabelVariant(variantId: string) {
+    setLabelSelected((prev) =>
+      prev.includes(variantId) ? prev.filter((id) => id !== variantId) : [...prev, variantId],
+    );
+  }
+
+  // Builds A4 label sheets (3 columns x 8 rows = 24 labels per page) with the
+  // variant name, price and a scannable EAN-13 barcode, then opens the print
+  // dialog for exactly that content.
+  function handlePrintLabels() {
+    if (!labelProduct || !shop) return;
+    const selected = (variantsMap[labelProduct.id] || []).filter(
+      (v) => labelSelected.includes(v.id) && v.barcode && validateBarcode(v.barcode),
+    );
+    if (selected.length === 0) return;
+
+    const cells = selected
+      .map(
+        (v) => `
+        <div class="cell">
+          <div class="name">${escapeHtml(labelProduct.name)}</div>
+          <div class="variant">${escapeHtml(v.name)}</div>
+          <div class="price">${escapeHtml(formatMoney(v.sale_price, shop.currency_decimals, shop.currency_code))}</div>
+          <div class="barcode">${barcodeSvgString(v.barcode!, { moduleWidth: 2, height: 36 })}</div>
+        </div>`,
+      )
+      .join('');
+    printHtml(`<div class="sheet">${cells}</div>`, LABEL_CSS, `Labels — ${labelProduct.name}`);
+  }
 
   function handleOpenCreate() {
     setEditingProduct(null);
@@ -440,6 +522,14 @@ export function ProductsScreen() {
                       <td className="p-4 font-medium text-gray-800">{priceStr}</td>
                       <td className="p-4 font-semibold text-gray-900">{totalStock}</td>
                       <td className="p-4 text-right space-x-2">
+                        {vars.length > 0 && (
+                          <button
+                            onClick={() => handleOpenLabels(p)}
+                            className="px-3 py-1.5 border rounded text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                          >
+                            Labels
+                          </button>
+                        )}
                         <button
                           onClick={() => void handleOpenEdit(p)}
                           className="px-3 py-1.5 border rounded text-blue-600 hover:bg-blue-50 min-h-11 font-medium"
@@ -461,6 +551,75 @@ export function ProductsScreen() {
           </table>
         </div>
       </div>
+
+      {/* Label Printing Modal */}
+      {labelProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h2 className="text-xl font-bold text-gray-900">Print Labels — {labelProduct.name}</h2>
+              <button
+                onClick={() => setLabelProduct(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Select the variants to label. Labels print on A4 sheets, 3 × 8 grid (24 per page), with the
+              variant name, price and a scannable EAN-13 barcode.
+            </p>
+            <div className="space-y-2 max-h-72 overflow-y-auto divide-y">
+              {(variantsMap[labelProduct.id] || [])
+                .filter((v) => v.is_active === 1)
+                .map((v) => {
+                  const printable = Boolean(v.barcode && validateBarcode(v.barcode));
+                  return (
+                    <label
+                      key={v.id}
+                      className={`flex items-center gap-3 p-2.5 rounded ${
+                        printable ? 'hover:bg-gray-50 cursor-pointer' : 'opacity-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={!printable}
+                        checked={labelSelected.includes(v.id)}
+                        onChange={() => toggleLabelVariant(v.id)}
+                        className="w-5 h-5"
+                      />
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-medium text-gray-900 text-sm truncate">{v.name}</span>
+                        <span className="block text-xs text-gray-500">
+                          {v.barcode ?? 'No barcode'}
+                          {!printable && ' — not a valid EAN-13, skipped'}
+                        </span>
+                      </span>
+                      <span className="text-sm font-semibold text-gray-800">
+                        {formatMoney(v.sale_price, shop?.currency_decimals ?? 0, shop?.currency_code ?? 'PKR')}
+                      </span>
+                    </label>
+                  );
+                })}
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t">
+              <button
+                onClick={() => setLabelProduct(null)}
+                className="px-5 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePrintLabels}
+                disabled={labelSelected.length === 0}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
+              >
+                Print {labelSelected.length} label{labelSelected.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (

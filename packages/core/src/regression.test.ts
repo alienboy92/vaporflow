@@ -269,7 +269,12 @@ describe('Phase 1 regression coverage', () => {
     expect(IdSchema.parse(uuidv7())).toHaveLength(36);
     expect(() => TimestampSchema.parse('2026-02-30T00:00:00.000Z')).toThrow();
     await db.migrate('packages/core/migrations');
-    expect(await db.query('SELECT * FROM _migrations')).toHaveLength(2);
+    const applied = (await db.query('SELECT * FROM _migrations')) as unknown[];
+    // 001_initial, 002_ledger_immutability, 003_receipt_unique
+    expect(applied).toHaveLength(3);
+    // Re-running adds nothing: idempotent.
+    await db.migrate('packages/core/migrations');
+    expect(await db.query('SELECT * FROM _migrations')).toHaveLength(applied.length);
   });
   it('enforces local ledger immutability but permits sync metadata updates', async () => {
     const { sale } = await sell();

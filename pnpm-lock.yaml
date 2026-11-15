@@ -81,6 +81,12 @@ importers:
       '@capacitor/core':
         specifier: ^6.2.0
         version: 6.2.3
+      '@capacitor/filesystem':
+        specifier: ^6.0.2
+        version: 6.0.2(@capacitor/core@6.2.3)
+      '@capacitor/share':
+        specifier: ^6.0.2
+        version: 6.0.2(@capacitor/core@6.2.3)
       '@vaporflow/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -276,6 +282,16 @@ packages:
 
   '@capacitor/core@6.2.3':
     resolution: {integrity: sha512-zajW/Fu1RFi42CC6KDjjgOIJ57hCl0Mo9FixpWpm6wXYAsFOU04dk+CBLvRt6rtO3sd6Lce4xxu68Pvi1oR99w==}
+
+  '@capacitor/filesystem@6.0.2':
+    resolution: {integrity: sha512-OUDjGPljC3/q6wFnCCBUgElfZgAaSaoKeh0ij2eoDygn5KVXta+5CiJ7H7o2/ziTW6WOyvP0++EC3DT0TzR23A==}
+    peerDependencies:
+      '@capacitor/core': ^6.0.0
+
+  '@capacitor/share@6.0.2':
+    resolution: {integrity: sha512-qQIeyjzFB1VgP4ojyNg2O98TCigDWLKZ5melVMSVeDO0YQov5OeammsVgaCGSzvYBPSgyOwX41QvcDWG4yHN1A==}
+    peerDependencies:
+      '@capacitor/core': ^6.0.0
 
   '@develar/schema-utils@2.6.5':
     resolution: {integrity: sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig==}
@@ -3737,6 +3753,14 @@ snapshots:
   '@capacitor/core@6.2.3':
     dependencies:
       tslib: 2.9.1
+
+  '@capacitor/filesystem@6.0.2(@capacitor/core@6.2.3)':
+    dependencies:
+      '@capacitor/core': 6.2.3
+
+  '@capacitor/share@6.0.2(@capacitor/core@6.2.3)':
+    dependencies:
+      '@capacitor/core': 6.2.3
 
   '@develar/schema-utils@2.6.5':
     dependencies:

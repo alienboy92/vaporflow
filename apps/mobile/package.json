@@ -11,11 +11,13 @@
     "build:diagnostics": "pnpm --filter @vaporflow/app build:diagnostics && node -e \"const fs=require('fs');fs.cpSync('../../packages/app/dist','./dist',{recursive:true,force:true})\""
   },
   "dependencies": {
+    "@capacitor-community/sqlite": "6.0.2",
     "@capacitor/android": "^6.2.0",
-    "@capacitor/core": "^6.2.0",
     "@capacitor/cli": "^6.2.0",
-    "@vaporflow/core": "workspace:*",
-    "@capacitor-community/sqlite": "6.0.2"
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/filesystem": "^6.0.2",
+    "@capacitor/share": "^6.0.2",
+    "@vaporflow/core": "workspace:*"
   },
   "main": "./src/index.ts",
   "types": "./dist-ts/index.d.ts",
@@ -26,7 +28,7 @@
     }
   },
   "devDependencies": {
-    "better-sqlite3": "12.11.1",
-    "@types/better-sqlite3": "9.6.0"
+    "@types/better-sqlite3": "9.6.0",
+    "better-sqlite3": "12.11.1"
   }
 }
