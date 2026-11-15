@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useDb } from '../context/DbProvider';
-import { StockRepo, SettingsRepo } from '@vaporflow/core';
-import { SalePlaceholder, ProductsPlaceholder, StockPlaceholder, SalesPlaceholder, ReportsPlaceholder, ExpensesPlaceholder } from '../screens/PlaceholderScreens';
+import { StockRepo, ShopRepo } from '@vaporflow/core';
+import {
+  SalePlaceholder,
+  ProductsPlaceholder,
+  StockPlaceholder,
+  SalesPlaceholder,
+  ReportsPlaceholder,
+  ExpensesPlaceholder,
+} from '../screens/PlaceholderScreens';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { LockScreen } from './LockScreen';
+import { useSecurity } from './use-security';
 import { globalErrorLogger } from '../utils/logger';
 
 export function Shell() {
@@ -12,8 +20,8 @@ export function Shell() {
   const location = useLocation();
 
   const [lowStockCount, setLowStockCount] = useState(0);
-  const [isLocked, setIsLocked] = useState(false);
-  const [idleMinutes, setIdleMinutes] = useState(0);
+  const security = useSecurity();
+
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -21,16 +29,12 @@ export function Shell() {
     async function loadMeta() {
       try {
         const stockRepo = new StockRepo(db);
-        const settingsRepo = new SettingsRepo(db);
-        const activeShop = await db.query<{ id: string }>("SELECT id FROM shops WHERE deleted_at IS NULL LIMIT 1");
-        const shopId = activeShop[0]?.id;
+
+        const activeShop = await new ShopRepo(db).getActiveShop();
+        const shopId = activeShop?.id;
         if (shopId && active) {
           const low = await stockRepo.getLowStockVariants(shopId);
           setLowStockCount(low.length);
-        }
-        const idleStr = await settingsRepo.get('idle_lock_minutes');
-        if (idleStr && active) {
-          setIdleMinutes(Number(idleStr));
         }
       } catch (err) {
         globalErrorLogger.log(err);
@@ -44,29 +48,30 @@ export function Shell() {
     };
   }, [db]);
 
-  useEffect(() => {
-    if (!idleMinutes || idleMinutes <= 0) return;
-    let timeoutId: number;
-
-    const resetTimer = () => {
-      clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(() => {
-        setIsLocked(true);
-      }, idleMinutes * 60 * 1000);
-    };
-
-    window.addEventListener('mousemove', resetTimer);
-    window.addEventListener('keydown', resetTimer);
-    window.addEventListener('touchstart', resetTimer);
-    resetTimer();
-
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('mousemove', resetTimer);
-      window.removeEventListener('keydown', resetTimer);
-      window.removeEventListener('touchstart', resetTimer);
-    };
-  }, [idleMinutes]);
+  if (security.error)
+    return (
+      <main className="p-6">
+        <p role="alert">Could not load security settings.</p>
+        <button className="min-h-11 px-4 border" onClick={security.retry}>
+          Retry
+        </button>
+      </main>
+    );
+  if (!security.ready)
+    return (
+      <main className="p-6" role="status">
+        Loading security settings…
+      </main>
+    );
+  if (security.locked)
+    return (
+      <LockScreen
+        onUnlock={() => {
+          setMoreOpen(false);
+          security.unlock();
+        }}
+      />
+    );
 
   const navItems = [
     { label: 'Sale', path: '/' },
@@ -80,8 +85,6 @@ export function Shell() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-      {isLocked && <LockScreen onUnlock={() => setIsLocked(false)} />}
-
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-gray-900 text-white shrink-0">
         <div className="p-6 border-b border-gray-800">
@@ -96,7 +99,9 @@ export function Shell() {
                 key={item.path}
                 to={item.path}
                 className={`flex items-center justify-between px-4 py-3 rounded-lg min-h-11 text-base font-medium transition-colors ${
-                  active ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                  active
+                    ? 'bg-blue-700 text-white'
+                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                 }`}
               >
                 <span>{item.label}</span>
@@ -111,7 +116,8 @@ export function Shell() {
         </nav>
         <div className="p-4 border-t border-gray-800">
           <button
-            onClick={() => setIsLocked(true)}
+            disabled={!security.enabled}
+            onClick={security.lock}
             className="w-full flex items-center justify-center px-4 py-2 rounded border border-gray-700 text-gray-300 hover:bg-gray-800 min-h-11 text-sm font-medium"
           >
             Lock Screen
@@ -132,13 +138,17 @@ export function Shell() {
           </div>
           <div className="flex items-center gap-4">
             {lowStockCount > 0 && (
-              <Link to="/stock" className="flex items-center gap-1.5 bg-red-50 text-red-700 px-3 py-1.5 rounded-full text-sm font-medium border border-red-200">
+              <Link
+                to="/stock"
+                className="flex items-center gap-1.5 bg-red-50 text-red-700 px-3 py-1.5 rounded-full text-sm font-medium border border-red-200"
+              >
                 <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse" />
                 {lowStockCount} low stock
               </Link>
             )}
             <button
-              onClick={() => setIsLocked(true)}
+              disabled={!security.enabled}
+              onClick={security.lock}
               className="md:hidden text-sm font-medium text-gray-600 border px-3 py-1.5 rounded min-h-11"
             >
               Lock
@@ -161,14 +171,26 @@ export function Shell() {
       </div>
 
       {/* Android Bottom Bar (SPEC 9.1) */}
-      <nav aria-label="Mobile Navigation" className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center h-16 z-40 px-2">
-        <Link to="/" className={`flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}>
+      <nav
+        aria-label="Mobile Navigation"
+        className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around items-center h-16 z-40 px-2"
+      >
+        <Link
+          to="/"
+          className={`flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}
+        >
           <span className="text-xs">Sale</span>
         </Link>
-        <Link to="/products" className={`flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/products' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}>
+        <Link
+          to="/products"
+          className={`flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/products' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}
+        >
           <span className="text-xs">Products</span>
         </Link>
-        <Link to="/stock" className={`relative flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/stock' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}>
+        <Link
+          to="/stock"
+          className={`relative flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/stock' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}
+        >
           <span className="text-xs">Stock</span>
           {lowStockCount > 0 && (
             <span className="absolute top-1 right-3 bg-red-600 text-white text-[10px] px-1.5 rounded-full font-bold">
@@ -176,7 +198,10 @@ export function Shell() {
             </span>
           )}
         </Link>
-        <Link to="/sales" className={`flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/sales' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}>
+        <Link
+          to="/sales"
+          className={`flex flex-col items-center justify-center flex-1 py-1 min-h-11 ${location.pathname === '/sales' ? 'text-blue-700 font-bold' : 'text-gray-600'}`}
+        >
           <span className="text-xs">Sales</span>
         </Link>
         <button

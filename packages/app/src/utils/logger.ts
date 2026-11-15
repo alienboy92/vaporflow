@@ -4,20 +4,30 @@ export interface ErrorLogEntry {
   stack?: string;
 }
 
-class ErrorLogger {
+export class ErrorLogger {
   private logs: ErrorLogEntry[] = [];
   private maxLogs = 100;
 
   log(error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : undefined;
-    const sanitizedMessage = message
-      .replace(/pin[=:]\s*\d+/gi, 'pin=***')
-      .replace(/password[=:]\s*\S+/gi, 'password=***');
+    // Raw exception messages (including validation errors) may contain entire payloads.
+    // Retain only source locations, never the message or the first stack line.
+    const stack =
+      error instanceof Error
+        ? error.stack
+            ?.split('\n')
+            .slice(1)
+            .flatMap((line) => {
+              const match = line.match(/\/([a-zA-Z0-9_.-]+\.(?:js|tsx?|mjs)):(\d+):(\d+)/);
+              return match ? [`${match[1]}:${match[2]}:${match[3]}`] : [];
+            })
+            .slice(0, 10)
+            .join('\n')
+        : undefined;
 
     this.logs.unshift({
       timestamp: new Date().toISOString(),
-      message: sanitizedMessage,
+      message:
+        'Application operation failed. Retry the operation; source locations follow when available.',
       stack,
     });
     if (this.logs.length > this.maxLogs) {

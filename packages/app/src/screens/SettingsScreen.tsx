@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useDb } from '../context/DbProvider';
-import { ShopRepo, DeviceRepo, SettingsRepo, hashPin, verifyPin } from '@vaporflow/core';
+import { ShopRepo, DeviceRepo, SettingsRepo, updatePin } from '@vaporflow/core';
 import type { Shop, Device } from '@vaporflow/core';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
@@ -88,38 +88,17 @@ export function SettingsScreen() {
     setPinMessage('');
     try {
       const settingsRepo = new SettingsRepo(db);
-      const storedHash = await settingsRepo.get('pin_hash');
-
-      if (storedHash) {
-        if (!currentPin) {
-          setPinMessage('Enter current PIN to change or remove.');
-          return;
-        }
-        const match = await verifyPin(currentPin, storedHash);
-        if (!match) {
-          setPinMessage('Incorrect current PIN.');
-          return;
-        }
-      }
-
-      if (newPin) {
-        if (!/^\d{4,6}$/.test(newPin)) {
-          setPinMessage('New PIN must be 4 to 6 digits.');
-          return;
-        }
-        const hash = await hashPin(newPin);
-        await settingsRepo.set('pin_hash', hash);
-        setPinMessage('PIN updated successfully.');
-      } else {
-        await settingsRepo.set('pin_hash', '');
-        setPinMessage('PIN removed successfully.');
-      }
+      await updatePin(settingsRepo, currentPin, newPin);
+      window.dispatchEvent(new Event('vaporflow-security-changed'));
+      setPinMessage(newPin ? 'PIN updated successfully.' : 'PIN removed successfully.');
       setCurrentPin('');
       setNewPin('');
       void loadData();
     } catch (err) {
       globalErrorLogger.log(err);
-      setPinMessage('Failed to update PIN.');
+      setPinMessage(
+        'Could not update PIN. Check the current PIN and use 4–6 digits for a new PIN.',
+      );
     }
   }
 
@@ -127,6 +106,7 @@ export function SettingsScreen() {
     try {
       const settingsRepo = new SettingsRepo(db);
       await settingsRepo.set('idle_lock_minutes', minutes);
+      window.dispatchEvent(new Event('vaporflow-security-changed'));
       setSettings((prev) => ({ ...prev, idle_lock_minutes: minutes }));
     } catch (err) {
       globalErrorLogger.log(err);
@@ -134,7 +114,11 @@ export function SettingsScreen() {
   }
 
   if (loading) {
-    return <div className="p-6 text-gray-600" role="status">Loading settings...</div>;
+    return (
+      <div className="p-6 text-gray-600" role="status">
+        Loading settings...
+      </div>
+    );
   }
 
   return (
@@ -147,7 +131,10 @@ export function SettingsScreen() {
         </div>
       )}
       {message && (
-        <div role="status" className="p-4 bg-green-50 text-green-700 rounded border border-green-200">
+        <div
+          role="status"
+          className="p-4 bg-green-50 text-green-700 rounded border border-green-200"
+        >
           {message}
         </div>
       )}
@@ -190,7 +177,9 @@ export function SettingsScreen() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Receipt Footer</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Receipt Footer
+                </label>
                 <input
                   type="text"
                   className="w-full rounded border border-gray-300 p-3 min-h-11"
@@ -199,13 +188,17 @@ export function SettingsScreen() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Default Low Stock Threshold</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Default Low Stock Threshold
+                </label>
                 <input
                   type="number"
                   min={0}
                   className="w-full rounded border border-gray-300 p-3 min-h-11"
                   value={shop.default_low_stock_threshold}
-                  onChange={(e) => setShop({ ...shop, default_low_stock_threshold: Number(e.target.value) })}
+                  onChange={(e) =>
+                    setShop({ ...shop, default_low_stock_threshold: Number(e.target.value) })
+                  }
                 />
               </div>
             </div>
@@ -213,16 +206,27 @@ export function SettingsScreen() {
             <div className="flex items-center gap-4 pt-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Shop Logo</label>
-                <input type="file" accept="image/*" onChange={handleLogoChange} className="text-sm text-gray-500" />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  className="text-sm text-gray-500"
+                />
               </div>
               {shop.logo_base64 && (
                 <div className="flex items-center gap-3">
-                  <img src={shop.logo_base64} alt="Shop logo" className="h-12 w-12 object-contain border rounded" />
+                  <img
+                    src={shop.logo_base64}
+                    alt="Shop logo"
+                    className="h-12 w-12 object-contain border rounded"
+                  />
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
                       checked={shop.show_logo_on_receipt === 1}
-                      onChange={(e) => setShop({ ...shop, show_logo_on_receipt: e.target.checked ? 1 : 0 })}
+                      onChange={(e) =>
+                        setShop({ ...shop, show_logo_on_receipt: e.target.checked ? 1 : 0 })
+                      }
                     />
                     Show on receipt
                   </label>
@@ -332,7 +336,9 @@ export function SettingsScreen() {
           <div className="flex gap-2">
             <button
               onClick={() => {
-                const text = logs.map((l) => `[${l.timestamp}] ${l.message}\n${l.stack || ''}`).join('\n---\n');
+                const text = logs
+                  .map((l) => `[${l.timestamp}] ${l.message}\n${l.stack || ''}`)
+                  .join('\n---\n');
                 navigator.clipboard.writeText(text);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
@@ -359,7 +365,9 @@ export function SettingsScreen() {
             logs.map((log, i) => (
               <div key={i} className="mb-2">
                 <span className="text-gray-400">[{log.timestamp}]</span> {log.message}
-                {log.stack && <div className="text-gray-500 text-[10px] whitespace-pre-wrap">{log.stack}</div>}
+                {log.stack && (
+                  <div className="text-gray-500 text-[10px] whitespace-pre-wrap">{log.stack}</div>
+                )}
               </div>
             ))
           )}

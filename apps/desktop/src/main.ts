@@ -107,8 +107,8 @@ async function start(): Promise<void> {
       if (!rolledBack) throw new Error('IPC batch failed rollback test');
       const migrations = await api.db.query('SELECT name FROM _migrations ORDER BY name');
       if (migrations.length !== 2) throw new Error('Missing migrations');
-      for (let i = 0; i < 100 && !document.body.innerText.includes('Database connected'); i++) await new Promise(resolve => setTimeout(resolve, 50));
-      if (!document.body.innerText.includes('Database connected')) throw new Error('Renderer database provider did not initialize');
+      for (let i = 0; i < 100 && !document.body.innerText.includes('VaporFlow — First-Run Setup'); i++) await new Promise(resolve => setTimeout(resolve, 50));
+      if (!document.body.innerText.includes('VaporFlow — First-Run Setup')) throw new Error('Renderer database provider did not initialize');
       return { persisted: before[0]?.value === 'persisted', rolledBack, migrations: migrations.length, renderer: true };
     })()`);
     console.log('VAPORFLOW_SMOKE ' + JSON.stringify(result));

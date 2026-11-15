@@ -10,15 +10,18 @@ function AppRoot() {
   const db = useDb();
   const [shopConfigured, setShopConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [setupError, setSetupError] = useState(false);
 
   const checkSetup = useCallback(async () => {
+    setLoading(true);
+    setSetupError(false);
     try {
       const shopRepo = new ShopRepo(db);
       const activeShop = await shopRepo.getActiveShop();
       setShopConfigured(Boolean(activeShop));
     } catch (err) {
       globalErrorLogger.log(err);
-      setShopConfigured(false);
+      setSetupError(true);
     } finally {
       setLoading(false);
     }
@@ -35,6 +38,16 @@ function AppRoot() {
       </main>
     );
   }
+
+  if (setupError)
+    return (
+      <main className="p-6">
+        <p role="alert">Could not read shop configuration. Your saved data has not been changed.</p>
+        <button className="min-h-11 px-4 border rounded" onClick={() => void checkSetup()}>
+          Retry
+        </button>
+      </main>
+    );
 
   if (!shopConfigured) {
     return <SetupWizard onComplete={() => setShopConfigured(true)} />;
