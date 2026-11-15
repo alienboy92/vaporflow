@@ -3,13 +3,13 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useDb } from '../context/DbProvider';
 import { StockRepo, ShopRepo } from '@vaporflow/core';
 import {
-  SalePlaceholder,
   SalesPlaceholder,
   ReportsPlaceholder,
   ExpensesPlaceholder,
 } from '../screens/PlaceholderScreens';
 import { ProductsScreen } from '../screens/ProductsScreen';
 import { StockScreen } from '../screens/StockScreen';
+import { SaleScreen } from '../screens/SaleScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { LockScreen } from './LockScreen';
 import { useSecurity } from './use-security';
@@ -165,7 +165,7 @@ export function Shell() {
         {/* Routes */}
         <main className="flex-1 overflow-y-auto">
           <Routes>
-            <Route path="/" element={<SalePlaceholder />} />
+            <Route path="/" element={<SaleScreen />} />
             <Route path="/products" element={<ProductsScreen />} />
             <Route path="/stock" element={<StockScreen />} />
             <Route path="/sales" element={<SalesPlaceholder />} />

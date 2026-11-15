@@ -1,12 +1,3 @@
-export function SalePlaceholder() {
-  return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">Sale (Checkout)</h1>
-      <p className="text-gray-600">Checkout and receipt counter will be implemented in Phase 5.</p>
-    </div>
-  );
-}
-
 export function ProductsPlaceholder() {
   return (
     <div className="p-8 max-w-4xl mx-auto">

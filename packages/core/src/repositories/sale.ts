@@ -75,6 +75,20 @@ export class SaleRepo {
       throw new Error('Inconsistent ID array lengths for sale completion');
     }
 
+    // Determine receipt number using per-device counter in settings
+    const devices = await this.db.query<{ code: string }>(
+      `SELECT code FROM devices WHERE id = ? AND deleted_at IS NULL`,
+      [validatedInput.device_id],
+    );
+    const deviceCode = devices[0]?.code ?? 'PC1';
+
+    const settingRows = await this.db.query<{ value: string | null }>(
+      `SELECT value FROM settings WHERE key = 'receipt_counter'`,
+    );
+    const currentCounter = parseInt(settingRows[0]?.value ?? '0', 10);
+    const nextCounter = currentCounter + 1;
+    const receipt_no = validatedInput.receipt_no || `${deviceCode}-${String(nextCounter).padStart(6, '0')}`;
+
     // Verify variant costs from database for security/immutability
     const resolvedLines: {
       variant_id: string;
@@ -124,7 +138,7 @@ export class SaleRepo {
     const sale: Sale = {
       id: saleId,
       shop_id: validatedInput.shop_id,
-      receipt_no: validatedInput.receipt_no,
+      receipt_no,
       sold_at: validatedInput.sold_at,
       subtotal,
       discount_amount: validatedInput.discount_amount,
@@ -142,6 +156,12 @@ export class SaleRepo {
 
     const items: SaleItem[] = [];
     const statements: { sql: string; params?: unknown[] }[] = [];
+
+    statements.push({
+      sql: `INSERT INTO settings (key, value) VALUES ('receipt_counter', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      params: [String(nextCounter)],
+    });
 
     statements.push({
       sql: `INSERT INTO sales (id, shop_id, receipt_no, sold_at, subtotal, discount_amount, total, payment_method, amount_received, note, created_at, updated_at, deleted_at, device_id, dirty, server_updated_at)

@@ -266,7 +266,7 @@ export type CartLine = z.infer<typeof CartLineInputSchema>;
 export const CompleteSaleInputSchema = z.object({
   shop_id: IdSchema,
   device_id: IdSchema,
-  receipt_no: z.string().min(1),
+  receipt_no: z.string().min(1).optional(),
   sold_at: TimestampSchema,
   payment_method: PaymentMethodSchema,
   amount_received: z.number().int().nonnegative().nullable(),
