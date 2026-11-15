@@ -1,3 +1,15 @@
+import type { SettingsRepo } from './repositories/settings.js';
+
+export async function updatePin(
+  settings: SettingsRepo,
+  currentPin: string,
+  newPin: string,
+): Promise<void> {
+  const stored = await settings.get('pin_hash');
+  if (stored && !(await verifyPin(currentPin, stored))) throw new Error('Incorrect current PIN');
+  await settings.set('pin_hash', newPin ? await hashPin(newPin) : '');
+}
+
 export async function hashPin(pin: string): Promise<string> {
   if (!/^\d{4,6}$/.test(pin)) throw new Error('PIN must be 4 to 6 digits');
   const encoder = new TextEncoder();

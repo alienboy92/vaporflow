@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from './testing/sqlite-test-adapter.js';
 import { ShopRepo } from './repositories/shop.js';
 import { DeviceRepo } from './repositories/device.js';
-import { hashPin, verifyPin } from './pin.js';
+import { hashPin, verifyPin, updatePin } from './pin.js';
 import { uuidv7 } from './uuid.js';
 import path from 'node:path';
+import { SettingsRepo } from './repositories/settings.js';
+import { ShopSchema, DeviceSchema } from './types/schemas.js';
 
 describe('Phase 3 — Setup, navigation, and settings', () => {
   let db: SqliteTestAdapter;
@@ -80,23 +82,55 @@ describe('Phase 3 — Setup, navigation, and settings', () => {
 
     const shopRepo = new ShopRepo(db);
 
-    // Force failure by injecting an invalid query in batch
-    let failed = false;
-    try {
-      await db.batch([
-        {
-          sql: `INSERT INTO shops (id, shop_id, name, created_at, updated_at, device_id, dirty) VALUES (?, ?, 'Shop', ?, ?, ?, 1)`,
-          params: [shopId, shopId, now, now, deviceId],
-        },
-        { sql: 'INSERT INTO non_existent_table_for_rollback VALUES (1)' },
-      ]);
-    } catch {
-      failed = true;
-    }
+    const common = {
+      shop_id: shopId,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null,
+      device_id: deviceId,
+      dirty: 1,
+      server_updated_at: null,
+    };
+    const shop = ShopSchema.parse({
+      ...common,
+      id: shopId,
+      name: 'Shop',
+      address: null,
+      phone: null,
+      logo_base64: null,
+      show_logo_on_receipt: 0,
+    });
+    const device = DeviceSchema.parse({
+      ...common,
+      id: deviceId,
+      name: 'Terminal',
+      code: 'PC1',
+      last_seen_at: now,
+    });
+    // Fail the real repository's final statement after both entity inserts succeeded.
+    await db.query(
+      "CREATE TRIGGER fail_setup BEFORE INSERT ON settings BEGIN SELECT RAISE(ABORT, 'forced setup failure'); END",
+    );
+    await expect(shopRepo.saveFirstRun(shop, device)).rejects.toThrow('forced setup failure');
+    for (const table of ['shops', 'devices', 'settings'])
+      expect(await db.query('SELECT * FROM ' + table)).toEqual([]);
+    await db.query('DROP TRIGGER fail_setup');
+    await shopRepo.saveFirstRun(shop, device);
+    expect(await new SettingsRepo(db).get('active_device_id')).toBe(deviceId);
+  });
 
-    expect(failed).toBe(true);
-    const shops = await shopRepo.getActiveShop();
-    expect(shops).toBeUndefined();
+  it('sets, changes and removes PIN only with the correct current credential', async () => {
+    const settings = new SettingsRepo(db);
+    await updatePin(settings, '', '1234');
+    const original = await settings.get('pin_hash');
+    await expect(updatePin(settings, '9999', '5678')).rejects.toThrow();
+    await expect(updatePin(settings, '9999', '')).rejects.toThrow();
+    await expect(updatePin(settings, '1234', 'bad')).rejects.toThrow();
+    expect(await settings.get('pin_hash')).toBe(original);
+    await updatePin(settings, '1234', '5678');
+    expect(await verifyPin('5678', (await settings.get('pin_hash'))!)).toBe(true);
+    await updatePin(settings, '5678', '');
+    expect(await settings.get('pin_hash')).toBe('');
   });
 
   it('hashes and verifies PIN securely without plaintext storage', async () => {
