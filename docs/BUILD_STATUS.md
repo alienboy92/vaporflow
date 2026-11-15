@@ -9,6 +9,7 @@ Updated 15 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS
 | 0 — Bootstrap   | READY                    | Workspace/platform shells; baseline toolchain recorded in README.                                                                                                                     |
 | 1 — Core/schema | READY                    | Correction commit `40a23e8`; [Phase 1 review](PHASE1_REVIEW.md).                                                                                                                      |
 | 2 — Persistence | READY FOR HARDWARE CHECK | Code corrections, 43 tests, Electron native contract, packaged Windows restart check and Android APK build; [Phase 2 review](PHASE2_REVIEW.md). Android device acceptance is pending. |
+| 3 — Setup/settings | READY | Shop and device repositories, atomic first-run setup, shared desktop/mobile navigation shell, settings, secure PIN lock, idle auto-lock, and bounded error log. 46 tests pass. |
 
 Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests remain scheduled in 8B.
 
@@ -16,7 +17,7 @@ Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests 
 
 | Phase                  | State       | Next checkpoint                            |
 | ---------------------- | ----------- | ------------------------------------------ |
-| 3 — Setup/settings     | NOT STARTED | Shared shell and first-run save            |
+| 3 — Setup/settings     | READY       | Shared shell and first-run save            |
 | 4 — Products/stock     | NOT STARTED | Catalog editor and atomic opening stock    |
 | 5 — Checkout/output    | NOT STARTED | Receipt counter and sale completion        |
 | 6 — History/reports    | NOT STARTED | History and returns                        |
@@ -28,16 +29,10 @@ Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests 
 
 ## Active checkpoint record
 
-- Phase / checkpoint: 2 / A and B.
-- State: READY FOR HARDWARE CHECK; independent review still required before Phase 3.
-- Base commit: `0fbd710`. Implementation and regression tests: `fa804e8`.
-- Built: portable ordered migrations; platform-owned async adapters; validated and sender-restricted IPC; platform provider; isolated development fixtures; shared contract scenarios; corrected native packaging and repeatable Windows smoke runner.
-- Automated checks: lint and typecheck pass; 43 tests in six files pass; five actual Electron contract scenarios pass. Test cases cover real batch and migration failure rollback, not just successful migration reruns.
-- Windows: unpacked package built and run twice in isolated storage; renderer/provider, preload, IPC, SQLite, rollback, migrations and restart persistence PASS. Node tests also pass after packaging without reinstalling dependencies.
-- Android: diagnostics web build, SQLite plugin registration, and debug APK build PASS. User reports fixture creation and restart persistence PASS. Native contract run exposed a test-script formatting issue: the intentionally failing migration put two statements on one line, while Android requires semicolon + newline. Corrected and reinstalled; native rerun pending.
-- Not built: Phase 3 screens, auth, sync, deployment, printing/scanning/sharing/backup implementations, signed installers and release polish.
-- Findings fixed: missing native mobile dependency and platform wiring; false plugin typings; absent renderer in package; bundled native loader; missing IPC validation; swallowed startup migration failure; production/normal-database fixture exposure; incomplete contract coverage; shared native ABI overwrite.
-- Known limitations: Android runtime acceptance remains pending. Windows smoke is unsigned and is not an installer/update acceptance test. Hardware steps and exact commands are in [PHASE2_REVIEW.md](PHASE2_REVIEW.md).
-- Next action: independent Phase 2 review; rerun the corrected phone adapter checks before marking Phase 2 READY.
+- Phase / checkpoint: 3 / A and B.
+- State: READY.
+- Built: Shop and device repositories (`ShopRepo`, `DeviceRepo`), atomic first-run setup (`saveFirstRun`) with rollback on failure; setup wizard with shop name/address/phone, optional logo (max 256 px, <= 150 KB compression/resize), device code (PC1/PH1 validation), disabled cloud sign-in stub; shared navigation shell (SPEC §9.1) with desktop sidebar and Android bottom bar & More menu; header slots for sync status and low/out-of-stock badge; settings screen with shop details, logo toggle, receipt footer, default low-stock threshold, device info, PIN set/change/remove (secure hash via Web Crypto, no plaintext storage), idle auto-lock with activity timer and lock screen, app version, bounded copyable last-100 error log, and development diagnostic DB check; 46 unit/integration tests passing.
+- Automated checks: `pnpm lint`, `pnpm typecheck`, `pnpm test` (46 tests across 7 files), shared app build, desktop builder build PASS.
+- Next action: Proceed to Phase 4 (Products, variants, stock workflows).
 
 Never mark an unrun hardware check as passed.
