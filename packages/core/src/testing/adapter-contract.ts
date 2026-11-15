@@ -9,14 +9,17 @@ type Factory = (migrations: readonly MigrationRecord[]) => {
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
-async function rejects(work: () => Promise<unknown>): Promise<void> {
+async function rejects(
+  work: () => Promise<unknown>,
+  operation = 'Middle-statement rollback',
+): Promise<void> {
   let failed = false;
   try {
     await work();
   } catch {
     failed = true;
   }
-  check(failed, 'Expected operation to fail');
+  check(failed, `${operation}: expected operation to fail`);
 }
 export const adapterContract = [
   {
@@ -107,11 +110,12 @@ export async function runMigrationFailureContract(factory: Factory): Promise<voi
     { name: '001_good.sql', sql: 'CREATE TABLE committed (id INTEGER);' },
     {
       name: '002_bad.sql',
-      sql: 'CREATE TABLE must_rollback (id INTEGER); INSERT INTO missing_table VALUES (1);',
+      // Capacitor Android splits scripts at semicolon + newline, as in the real migrations.
+      sql: 'CREATE TABLE must_rollback (id INTEGER);\nINSERT INTO missing_table VALUES (1);\n',
     },
   ]);
   try {
-    await rejects(() => handle.db.migrate());
+    await rejects(() => handle.db.migrate(), 'Failed migration rollback');
     check(
       (await handle.db.query("SELECT name FROM sqlite_master WHERE name = 'must_rollback'"))
         .length === 0,
@@ -119,7 +123,7 @@ export async function runMigrationFailureContract(factory: Factory): Promise<voi
     );
     const rows = await handle.db.query<{ name: string }>('SELECT name FROM _migrations');
     check(rows.length === 1 && rows[0]?.name === '001_good.sql', 'Failed migration was journaled');
-    await rejects(() => handle.db.migrate());
+    await rejects(() => handle.db.migrate(), 'Failed migration retry');
   } finally {
     await handle.close();
   }

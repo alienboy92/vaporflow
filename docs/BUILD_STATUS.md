@@ -34,10 +34,10 @@ Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests 
 - Built: portable ordered migrations; platform-owned async adapters; validated and sender-restricted IPC; platform provider; isolated development fixtures; shared contract scenarios; corrected native packaging and repeatable Windows smoke runner.
 - Automated checks: lint and typecheck pass; 43 tests in six files pass; five actual Electron contract scenarios pass. Test cases cover real batch and migration failure rollback, not just successful migration reruns.
 - Windows: unpacked package built and run twice in isolated storage; renderer/provider, preload, IPC, SQLite, rollback, migrations and restart persistence PASS. Node tests also pass after packaging without reinstalling dependencies.
-- Android: diagnostics web build, SQLite plugin registration, and debug APK build PASS. Native contract and force-stop/reopen checks NOT RUN, explicitly deferred by the user.
+- Android: diagnostics web build, SQLite plugin registration, and debug APK build PASS. User reports fixture creation and restart persistence PASS. Native contract run exposed a test-script formatting issue: the intentionally failing migration put two statements on one line, while Android requires semicolon + newline. Corrected and reinstalled; native rerun pending.
 - Not built: Phase 3 screens, auth, sync, deployment, printing/scanning/sharing/backup implementations, signed installers and release polish.
 - Findings fixed: missing native mobile dependency and platform wiring; false plugin typings; absent renderer in package; bundled native loader; missing IPC validation; swallowed startup migration failure; production/normal-database fixture exposure; incomplete contract coverage; shared native ABI overwrite.
 - Known limitations: Android runtime acceptance remains pending. Windows smoke is unsigned and is not an installer/update acceptance test. Hardware steps and exact commands are in [PHASE2_REVIEW.md](PHASE2_REVIEW.md).
-- Next action: independent Phase 2 review; run the deferred phone checks before marking Phase 2 READY.
+- Next action: independent Phase 2 review; rerun the corrected phone adapter checks before marking Phase 2 READY.
 
 Never mark an unrun hardware check as passed.

@@ -14,18 +14,19 @@ Updated 15 November 2026. Implementation commit: `fa804e8`. Scope: platform pers
 
 ## Verification
 
-| Check                                                           | Result                                                                                                                                |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm lint`                                                     | PASS                                                                                                                                  |
-| `pnpm typecheck`                                                | PASS                                                                                                                                  |
-| `pnpm test`                                                     | PASS — 43 tests, 6 files                                                                                                              |
-| `pnpm --filter @vaporflow/desktop test:contract`                | PASS — 5 scenarios against Electron 33's actual native adapter                                                                        |
-| `pnpm --filter @vaporflow/desktop build:unpacked`               | PASS                                                                                                                                  |
-| `pnpm --filter @vaporflow/desktop smoke`                        | PASS — packaged renderer/provider, sandboxed preload, IPC, migrations, rollback and data persistence across two separate app launches |
-| Node tests after desktop packaging                              | PASS — no dependency reinstall required                                                                                               |
-| Android diagnostics renderer build and `cap sync android`       | PASS — SQLite 6.0.2 registered                                                                                                        |
-| Android `assembleDebug`                                         | PASS — native SQLite plugin compiled into APK                                                                                         |
-| Android native adapter checks and force-stop/reopen persistence | NOT RUN — user will test on phone later                                                                                               |
+| Check                                                     | Result                                                                                                                                |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm lint`                                               | PASS                                                                                                                                  |
+| `pnpm typecheck`                                          | PASS                                                                                                                                  |
+| `pnpm test`                                               | PASS — 43 tests, 6 files                                                                                                              |
+| `pnpm --filter @vaporflow/desktop test:contract`          | PASS — 5 scenarios against Electron 33's actual native adapter                                                                        |
+| `pnpm --filter @vaporflow/desktop build:unpacked`         | PASS                                                                                                                                  |
+| `pnpm --filter @vaporflow/desktop smoke`                  | PASS — packaged renderer/provider, sandboxed preload, IPC, migrations, rollback and data persistence across two separate app launches |
+| Node tests after desktop packaging                        | PASS — no dependency reinstall required                                                                                               |
+| Android diagnostics renderer build and `cap sync android` | PASS — SQLite 6.0.2 registered                                                                                                        |
+| Android `assembleDebug`                                   | PASS — native SQLite plugin compiled into APK                                                                                         |
+| Android fixture and restart persistence                   | PASS — reported by user                                                                                                               |
+| Android native adapter checks                             | RERUN PENDING — migration test formatting corrected after device failure                                                              |
 
 The Capacitor tests on this machine use a plugin API double backed by real SQLite. They verify adapter behavior, not the Android native bridge. The Windows smoke uses temporary isolated storage, never the normal shop database.
 
@@ -42,7 +43,7 @@ pnpm --filter @vaporflow/desktop smoke
 
 Windows artifact: `apps/desktop/out/win-unpacked/VaporFlow.exe`. Use `pnpm dev:desktop` for the development fixture screen. Printing, sharing, backups and camera scanning are explicit unsupported stubs until their scheduled phases.
 
-## Phone acceptance, deferred by the user
+## Phone acceptance
 
 Build diagnostics explicitly; the ordinary Android runner rebuilds production assets and therefore hides this screen.
 
@@ -64,4 +65,8 @@ adb install -r apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
 
 Phase 3 features, auth, sync, deployment, printing, camera integration, signed installers and release acceptance were not built. The Windows smoke artifact is unsigned. No claim is made about clean-machine installation or update behavior. Native builds emit existing dependency/compiler warnings; the checked builds complete successfully.
 
-Phase 2 is ready for independent review and the deferred Android hardware check. It is not fully accepted while that check is unrun. Existing generated desktop artifacts and the unrelated `memory/` folder are excluded from the source commit.
+Phase 2 awaits independent review and a rerun of the corrected Android adapter checks. Fixture creation and restart persistence passed according to the user. Existing generated desktop artifacts and the unrelated `memory/` folder are excluded from the source commit.
+
+## Phone test correction
+
+The first native run reached the failed-migration scenario, but its same-line SQL caused the Android plugin to execute only the CREATE TABLE and skip the intended failing INSERT. The shared test now uses semicolon + newline separators, matching the shipped migrations, and errors identify the failed scenario. No production migration, adapter, or SPEC change was needed. Lint/typecheck, all 43 tests, and all five Electron scenarios passed again. The diagnostic APK was rebuilt, installed with existing data preserved, and reopened on the connected phone. Native rerun remains pending.

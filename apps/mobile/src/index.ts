@@ -39,6 +39,8 @@ async function runNativeContract(): Promise<string[]> {
     try {
       await test.run(handle.db);
       passed.push(test.name);
+    } catch (error) {
+      throw new Error(`${test.name}: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       await handle.close();
     }
