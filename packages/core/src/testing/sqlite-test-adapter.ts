@@ -1,20 +1,21 @@
 /**
  * DbAdapter interface definition and SqliteTestAdapter implementation (better-sqlite3 in-memory).
- * Phase 1 correction: Made asynchronous to support Capacitor operations and Electron IPC.
+ * Phase 1 & 2: Asynchronous contract, bundled portable migrations, transactional safety.
  */
 
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 
 import type { DbAdapter } from '../db-adapter.js';
+import { MIGRATIONS, type MigrationRecord } from '../migrations/data.js';
 
-/**
- * better-sqlite3 implementation for local SQLite (and unit tests in-memory).
- */
 export class SqliteTestAdapter implements DbAdapter {
   private db: Database.Database;
 
-  constructor(filename = ':memory:') {
+  constructor(
+    filename = ':memory:',
+    private readonly migrations: readonly MigrationRecord[] = MIGRATIONS,
+  ) {
     this.db = new Database(filename);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
@@ -40,7 +41,7 @@ export class SqliteTestAdapter implements DbAdapter {
     runInTx(statements);
   }
 
-  async migrate(migrationsDir: string): Promise<void> {
+  async migrate(migrationsDir?: string): Promise<void> {
     // Create _migrations table
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS _migrations (
@@ -49,12 +50,17 @@ export class SqliteTestAdapter implements DbAdapter {
       );
     `);
 
-    if (!fs.existsSync(migrationsDir)) return;
-
-    const files = fs
-      .readdirSync(migrationsDir)
-      .filter((f) => f.endsWith('.sql'))
-      .sort();
+    let migrationsToRun: readonly MigrationRecord[] = this.migrations;
+    if (migrationsDir && fs.existsSync(migrationsDir)) {
+      const files = fs
+        .readdirSync(migrationsDir)
+        .filter((f) => f.endsWith('.sql'))
+        .sort();
+      migrationsToRun = files.map((file) => ({
+        name: file,
+        sql: fs.readFileSync(`${migrationsDir}/${file}`, 'utf-8'),
+      }));
+    }
 
     const applied = new Set(
       this.db
@@ -63,16 +69,15 @@ export class SqliteTestAdapter implements DbAdapter {
         .map((row: unknown) => (row as { name: string }).name),
     );
 
-    for (const file of files) {
-      if (!applied.has(file)) {
-        const filePath = `${migrationsDir}/${file}`;
-        const sql = fs.readFileSync(filePath, 'utf-8');
-        this.db.transaction(() => {
-          this.db.exec(sql);
+    for (const m of migrationsToRun) {
+      if (!applied.has(m.name)) {
+        const applyTx = this.db.transaction(() => {
+          this.db.exec(m.sql);
           this.db
             .prepare(`INSERT INTO _migrations (name, applied_at) VALUES (?, datetime('now'))`)
-            .run(file);
-        })();
+            .run(m.name);
+        });
+        applyTx();
       }
     }
   }

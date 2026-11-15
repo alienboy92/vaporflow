@@ -7,17 +7,23 @@
   "scripts": {
     "dev": "node scripts/dev.js",
     "build": "pnpm --filter @vaporflow/app build && node scripts/build-electron.js && electron-builder --win",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:unpacked": "pnpm --filter @vaporflow/app build && node scripts/build-electron.js && electron-builder --dir --win",
+    "smoke": "node scripts/smoke.js",
+    "test:contract": "node scripts/contract.js"
   },
   "dependencies": {
-    "@vaporflow/app": "workspace:*"
+    "better-sqlite3": "12.10.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "^22.0.0",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.0",
     "esbuild": "^0.24.0",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "@electron/rebuild": "3.7.2",
+    "@vaporflow/core": "workspace:*"
   },
   "build": {
     "appId": "com.vaporflow.pos",
@@ -26,19 +32,25 @@
       "output": "out"
     },
     "files": [
-      "dist-electron/**/*",
+      "dist-electron/main.js",
+      "dist-electron/preload.cjs",
       {
-        "from": "../packages/app/dist",
+        "from": "../../packages/app/dist",
         "to": "renderer",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "sign": null,
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "npmRebuild": false
   }
 }

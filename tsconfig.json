@@ -9,17 +9,35 @@
     "moduleResolution": "bundler",
     "module": "ESNext",
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "paths": {
+      "@vaporflow/core": [
+        "./packages/core/src/index.ts"
+      ]
+    }
   },
   "references": [
-    { "path": "packages/core" },
-    { "path": "packages/app" },
-    { "path": "apps/desktop" }
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "apps/mobile"
+    },
+    {
+      "path": "packages/app"
+    },
+    {
+      "path": "apps/desktop"
+    }
   ],
   "files": []
 }

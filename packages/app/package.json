@@ -9,12 +9,15 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:diagnostics": "vite build --mode diagnostics"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "@vaporflow/core": "workspace:*",
+    "@vaporflow/mobile": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",

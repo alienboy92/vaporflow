@@ -11,6 +11,9 @@ apps/desktop/out
 # Capacitor / Android
 apps/mobile/android
 apps/mobile/dist
+apps/mobile/dist-ts
+apps/desktop/dist-electron
+apps/desktop/dist-types
 
 # IDE
 .idea

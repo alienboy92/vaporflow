@@ -1,15 +1,21 @@
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
+import type { DesktopBridge } from '@vaporflow/core';
 
-/**
- * Typed preload API exposed to the renderer via contextBridge.
- * Extend this as platform adapters are added in later phases.
- */
-const api = {
-  platform: 'desktop' as const,
-} satisfies VaporFlowAPI;
-
-export interface VaporFlowAPI {
-  platform: 'desktop';
-}
-
-contextBridge.exposeInMainWorld('vaporflow', api);
+const diagnosticsEnabled = process.argv.includes('--vaporflow-diagnostics');
+const bridge: DesktopBridge = {
+  platform: 'desktop',
+  db: {
+    query: (sql, params) => ipcRenderer.invoke('db:query', sql, params),
+    batch: (statements) => ipcRenderer.invoke('db:batch', statements),
+    migrate: () => ipcRenderer.invoke('db:migrate'),
+  },
+  ...(diagnosticsEnabled
+    ? {
+        diagnostics: {
+          read: () => ipcRenderer.invoke('diagnostics:read'),
+          createFixture: () => ipcRenderer.invoke('diagnostics:create'),
+        },
+      }
+    : {}),
+};
+contextBridge.exposeInMainWorld('vaporflow', bridge);

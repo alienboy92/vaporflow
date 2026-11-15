@@ -8,7 +8,11 @@
     "moduleResolution": "bundler",
     "module": "ESNext",
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "declaration": true,
@@ -16,10 +20,22 @@
     "sourceMap": true,
     "composite": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "paths": {
+      "@vaporflow/core": [
+        "../core/src/index.ts"
+      ]
+    }
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../core" }
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../../apps/mobile"
+    }
   ]
 }
