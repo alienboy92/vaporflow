@@ -20,6 +20,9 @@ apps/desktop/dist-types
 .vscode
 *.swp
 
+# Builder session notes
+memory/
+
 # Env
 .env
 .env.local

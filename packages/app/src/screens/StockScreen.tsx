@@ -91,7 +91,7 @@ export function StockScreen() {
         variantId: allVariants[0]?.variant_id ?? '',
         variantLabel: allVariants[0]?.label ?? '',
         qty: '10',
-        unitCost: allVariants[0]?.cost_price.toString() ?? '0',
+        unitCost: '',
         note: 'Restock shipment',
       },
     ]);
@@ -109,7 +109,7 @@ export function StockScreen() {
         variantId: first.variant_id,
         variantLabel: first.label,
         qty: '10',
-        unitCost: first.cost_price.toString(),
+        unitCost: '',
         note: 'Restock shipment',
       },
     ]);
@@ -121,18 +121,44 @@ export function StockScreen() {
     setError('');
     setSuccess('');
 
+    if (stockInItems.length === 0) {
+      setError('Add at least one item.');
+      return;
+    }
+
+    const parsedItems: { variantId: string; qty: number; unitCost?: number; note?: string }[] = [];
+    for (const [index, item] of stockInItems.entries()) {
+      const row = index + 1;
+      const qty = parseInt(item.qty, 10);
+      if (isNaN(qty) || qty <= 0 || !/^\d+$/.test(item.qty.trim())) {
+        setError(`Item #${row}: quantity must be a positive whole number.`);
+        return;
+      }
+      if (item.variantId === '') {
+        setError(`Item #${row}: select a variant.`);
+        return;
+      }
+      let unitCost: number | undefined;
+      if (item.unitCost.trim() !== '') {
+        unitCost = parseInt(item.unitCost, 10);
+        if (isNaN(unitCost) || unitCost < 0 || !/^\d+$/.test(item.unitCost.trim())) {
+          setError(`Item #${row}: purchase price must be a non-negative whole number, or left empty.`);
+          return;
+        }
+      }
+      parsedItems.push({
+        variantId: item.variantId,
+        qty,
+        unitCost,
+        note: item.note.trim() || undefined,
+      });
+    }
+
     try {
       const stockRepo = new StockRepo(db);
       const now = new Date().toISOString();
-      const itemsToSave = stockInItems.map((item) => ({
-        variantId: item.variantId,
-        qty: parseInt(item.qty, 10) || 0,
-        unitCost: parseInt(item.unitCost, 10),
-        note: item.note.trim() || undefined,
-      }));
-
-      await stockRepo.stockIn(shop.id, itemsToSave, shop.device_id, now);
-      setSuccess('Stock In recorded successfully.');
+      await stockRepo.stockIn(shop.id, parsedItems, shop.device_id, now);
+      setSuccess(`Stock In recorded: ${parsedItems.length} item${parsedItems.length === 1 ? '' : 's'}.`);
       setStockInOpen(false);
       void loadData();
     } catch (err) {
@@ -166,8 +192,8 @@ export function StockScreen() {
       const stockRepo = new StockRepo(db);
       const now = new Date().toISOString();
       const counted = parseInt(adjustCountedQty, 10);
-      if (isNaN(counted)) {
-        throw new Error('Invalid counted quantity');
+      if (isNaN(counted) || counted < 0 || !/^\d+$/.test(adjustCountedQty.trim())) {
+        throw new Error('Counted quantity must be a non-negative whole number.');
       }
 
       await stockRepo.adjustStock(shop.id, adjustVariantId, counted, adjustNote.trim(), shop.device_id, now);
@@ -389,17 +415,8 @@ export function StockScreen() {
                         value={si.variantId}
                         onChange={(e) => {
                           const vId = e.target.value;
-                          const found = allVariants.find((v) => v.variant_id === vId);
                           setStockInItems((prev) =>
-                            prev.map((item, i) =>
-                              i === index
-                                ? {
-                                    ...item,
-                                    variantId: vId,
-                                    unitCost: found ? found.cost_price.toString() : item.unitCost,
-                                  }
-                                : item,
-                            ),
+                            prev.map((item, i) => (i === index ? { ...item, variantId: vId } : item)),
                           );
                         }}
                         className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
@@ -435,6 +452,7 @@ export function StockScreen() {
                         <input
                           type="number"
                           min="0"
+                          placeholder="Leave empty to keep current"
                           value={si.unitCost}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -507,6 +525,7 @@ export function StockScreen() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Counted Quantity *</label>
                 <input
                   type="number"
+                  min="0"
                   required
                   value={adjustCountedQty}
                   onChange={(e) => setAdjustCountedQty(e.target.value)}

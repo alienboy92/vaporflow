@@ -2,7 +2,7 @@
 
 Version 2.0 · 15 November 2026 · Companion to SPEC v1.1
 
-**Next action: run Prompt 2. Phases 0 and 1 are complete.**
+**Next action: verify the Phase 4 repair, then run Prompt 5. Phases 0–3 are complete.**
 
 This revision changes delivery order, not the product specification. Every original v1 feature remains in scope. Keep this repository file as the working copy. Numbers from the previous plan are mapped below; do not mix the two sequences.
 
@@ -115,14 +115,14 @@ Out of scope: real screens, auth, sync, deployment. Commit, update BUILD_STATUS.
 ### Prompt 3 — Setup, navigation, settings
 
 ```text
-n, then proceed.
+Implement revised Phase 3 in docs/BUILD_PROMPTS.md, following its shared rules. Give a short plan, then proceed.
 
 Checkpoint A — reusable shell
 - SPEC 9.1 navigation: desktop sidebar; Android bottom bar and More. Header slots for sync and Stock badge, without pretending cloud is connected.
 - Build only UI pieces needed now: layout, forms, dialogs, loading/empty/error states. Reuse them later.
 
 Checkpoint B — local first run and settings
-- Shop/device repoZsitories and atomic first-run save; failure must not leave partial setup.
+- Shop/device repositories and atomic first-run save; failure must not leave partial setup.
 - Wizard: shop name/address/phone, optional logo <=256 px and under the SPEC size limit; unique device code compatible with PC1/PH1 examples.
 - Existing-shop sign-in remains visible but disabled until 8B.
 - Settings: shop details, logo/show-logo toggle, receipt footer, default low-stock threshold, device info, PIN set/change/remove and idle auto-lock. Do not add new currency-management features.

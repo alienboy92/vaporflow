@@ -20,6 +20,8 @@ interface VariantFormState {
   sale_price: string;
   low_stock_threshold: string;
   opening_stock: string;
+  /** True for rows created in this editor session; opening stock applies only to these. */
+  isNew: boolean;
 }
 
 export function ProductsScreen() {
@@ -46,6 +48,7 @@ export function ProductsScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showNewCatInput, setShowNewCatInput] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
 
   const barcodeInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -109,8 +112,10 @@ export function ProductsScreen() {
         sale_price: '0',
         low_stock_threshold: '',
         opening_stock: '0',
+        isNew: true,
       },
     ]);
+    setRemovedVariantIds([]);
     setError('');
     setSuccess('');
     setModalOpen(true);
@@ -132,9 +137,12 @@ export function ProductsScreen() {
         cost_price: v.cost_price.toString(),
         sale_price: v.sale_price.toString(),
         low_stock_threshold: v.low_stock_threshold !== null ? v.low_stock_threshold.toString() : '',
-        opening_stock: (stockMap[v.id] ?? 0).toString(),
+        // Existing variants never take opening stock here; stock changes go through Stock In / Adjustment.
+        opening_stock: '',
+        isNew: false,
       })),
     );
+    setRemovedVariantIds([]);
     setError('');
     setSuccess('');
     setModalOpen(true);
@@ -152,12 +160,18 @@ export function ProductsScreen() {
         sale_price: '0',
         low_stock_threshold: '',
         opening_stock: '0',
+        isNew: true,
       },
     ]);
   }
 
   function handleRemoveVariantRow(index: number) {
     if (formVariants.length <= 1) return;
+    const removed = formVariants[index];
+    if (removed && !removed.isNew) {
+      // Existing variants are soft-deleted in the same save batch.
+      setRemovedVariantIds((prev) => [...prev, removed.id]);
+    }
     setFormVariants((prev) => prev.filter((_, i) => i !== index));
   }
 
@@ -229,7 +243,7 @@ export function ProductsScreen() {
         const cost = parseInt(vf.cost_price, 10);
         const sale = parseInt(vf.sale_price, 10);
         const threshold = vf.low_stock_threshold ? parseInt(vf.low_stock_threshold, 10) : null;
-        const openingQty = parseInt(vf.opening_stock, 10) || 0;
+        const openingQty = vf.isNew ? parseInt(vf.opening_stock, 10) || 0 : 0;
 
         if (isNaN(cost) || cost < 0 || isNaN(sale) || sale < 0) {
           throw new Error(`Invalid price for variant #${index + 1}. Prices must be non-negative integers.`);
@@ -271,9 +285,11 @@ export function ProductsScreen() {
         openingStocks,
         shop.device_id,
         now,
+        removedVariantIds,
       );
 
       setSuccess('Product saved successfully.');
+      setRemovedVariantIds([]);
       setModalOpen(false);
       void loadData();
     } catch (err) {
@@ -584,7 +600,7 @@ export function ProductsScreen() {
                     const sale = parseInt(vf.sale_price, 10) || 0;
                     const profit = sale - cost;
                     const margin = sale > 0 ? ((profit / sale) * 100).toFixed(1) : '0.0';
-                    const isBelowCost = sale > 0 && sale < cost;
+                    const isBelowCost = sale < cost;
 
                     return (
                       <div
@@ -749,21 +765,34 @@ export function ProductsScreen() {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Opening Stock
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={vf.opening_stock}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setFormVariants((prev) =>
-                                  prev.map((item, i) => (i === index ? { ...item, opening_stock: val } : item)),
-                                );
-                              }}
-                              className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
-                            />
+                            {vf.isNew ? (
+                              <>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Opening Stock
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={vf.opening_stock}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormVariants((prev) =>
+                                      prev.map((item, i) => (i === index ? { ...item, opening_stock: val } : item)),
+                                    );
+                                  }}
+                                  className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <label className="block text-xs font-medium text-gray-400 mb-1">
+                                  Opening Stock
+                                </label>
+                                <div className="px-3 py-2 border rounded-lg min-h-11 bg-gray-100 text-xs text-gray-500 flex items-center">
+                                  Existing variant — use Stock In / Adjustment to change stock
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
 

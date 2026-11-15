@@ -178,7 +178,12 @@ export class StockRepo {
     const statements: { sql: string; params?: unknown[] }[] = [];
 
     for (const item of items) {
-      if (item.qty <= 0) continue;
+      if (!Number.isInteger(item.qty) || item.qty <= 0) {
+        throw new Error(`Stock In quantity must be a positive integer (got ${item.qty}).`);
+      }
+      if (item.unitCost !== undefined && (!Number.isInteger(item.unitCost) || item.unitCost < 0)) {
+        throw new Error(`Stock In purchase price must be a non-negative integer (got ${item.unitCost}).`);
+      }
       const movementId = uuidv7();
       statements.push({
         sql: `INSERT INTO stock_movements (id, shop_id, variant_id, qty_change, type, ref_type, ref_id, unit_cost, note, occurred_at, created_at, updated_at, deleted_at, device_id, dirty, server_updated_at)
@@ -224,6 +229,9 @@ export class StockRepo {
     TimestampSchema.parse(timestamp);
     if (!note || note.trim() === '') {
       throw new Error('Stock adjustment requires a required note.');
+    }
+    if (!Number.isInteger(countedQty) || countedQty < 0) {
+      throw new Error(`Counted quantity must be a non-negative integer (got ${countedQty}).`);
     }
 
     const currentStock = await this.getStockOnHand(shopId, variantId);

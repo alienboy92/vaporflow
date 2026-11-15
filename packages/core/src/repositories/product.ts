@@ -167,6 +167,7 @@ export class ProductRepo {
     openingStocks: { variantId: string; qty: number; unitCost: number; note?: string }[],
     deviceId: string,
     timestamp: string,
+    removedVariantIds: string[] = [],
   ): Promise<void> {
     IdSchema.parse(product.shop_id);
     ProductSchema.parse(product);
@@ -254,17 +255,17 @@ export class ProductRepo {
       });
     }
 
-    // Opening stock movements (only if qty > 0 and no opening movement exists yet)
+    // Opening stock movements (only if qty > 0 and the variant has no movements yet,
+    // so editing/retrying a saved variant can never create a duplicate opening movement)
     for (const os of openingStocks) {
       if (os.qty <= 0) continue;
-      // Check if opening movement already exists for this variant
-      const existingOpening = await readRows(
+      const existingMovement = await readRows(
         this.db,
         z.object({ id: IdSchema }),
-        `SELECT id FROM stock_movements WHERE variant_id = ? AND type = 'opening' AND deleted_at IS NULL`,
+        `SELECT id FROM stock_movements WHERE variant_id = ? AND deleted_at IS NULL LIMIT 1`,
         [os.variantId],
       );
-      if (existingOpening.length === 0) {
+      if (existingMovement.length === 0) {
         const movementId = uuidv7();
         statements.push({
           sql: `INSERT INTO stock_movements (id, shop_id, variant_id, qty_change, type, ref_type, ref_id, unit_cost, note, occurred_at, created_at, updated_at, deleted_at, device_id, dirty, server_updated_at)
@@ -283,6 +284,15 @@ export class ProductRepo {
           ],
         });
       }
+    }
+
+    // Soft-delete variants removed in the editor as part of the same atomic batch
+    for (const removedId of removedVariantIds) {
+      IdSchema.parse(removedId);
+      statements.push({
+        sql: `UPDATE variants SET deleted_at = ?, updated_at = ?, dirty = 1 WHERE id = ? AND shop_id = ?`,
+        params: [timestamp, timestamp, removedId, product.shop_id],
+      });
     }
 
     await this.db.batch(statements);

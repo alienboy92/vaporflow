@@ -6,6 +6,7 @@ import { ProductRepo } from './repositories/product.js';
 import { StockRepo } from './repositories/stock.js';
 import { uuidv7 } from './uuid.js';
 import { generateEAN13 } from './barcode.js';
+import type { Variant } from './types/schemas.js';
 import path from 'node:path';
 
 describe('Phase 4: Products, Variants, and Stock Workflows', () => {
@@ -70,6 +71,49 @@ describe('Phase 4: Products, Variants, and Stock Workflows', () => {
 
   afterEach(() => {
     db.close();
+  });
+
+  const mkProduct = (id: string, name: string) => ({
+    id,
+    shop_id: shopId,
+    category_id: null,
+    name,
+    brand: null,
+    notes: null,
+    is_active: 1,
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+    device_id: deviceId,
+    dirty: 1,
+    server_updated_at: null,
+  });
+
+  const mkVariant = (
+    id: string,
+    productId: string,
+    name: string,
+    threshold: number | null,
+    overrides: Partial<Variant> = {},
+  ): Variant => ({
+    id,
+    shop_id: shopId,
+    product_id: productId,
+    name,
+    sku: null,
+    barcode: generateEAN13(),
+    cost_price: 100,
+    sale_price: 200,
+    low_stock_threshold: threshold,
+    track_stock: 1,
+    is_active: 1,
+    created_at: now,
+    updated_at: now,
+    deleted_at: null,
+    device_id: deviceId,
+    dirty: 1,
+    server_updated_at: null,
+    ...overrides,
   });
 
   it('creates product with three variants and opening stock, tests barcode uniqueness and soft-delete', async () => {
@@ -377,6 +421,244 @@ describe('Phase 4: Products, Variants, and Stock Workflows', () => {
     expect(types).toContain('opening');
     expect(types).toContain('restock');
     expect(types).toContain('adjustment');
+  });
+
+  it('never creates opening stock when editing a variant whose stock came from restocks (F1 regression)', async () => {
+    const productId = uuidv7();
+    const variantId = uuidv7();
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'Probe Product'),
+      [mkVariant(variantId, productId, 'Default', null)],
+      [], // created with no opening stock
+      deviceId,
+      now,
+    );
+
+    await stockRepo.stockIn(shopId, [{ variantId, qty: 10, note: 'delivery' }], deviceId, now);
+    const before = await stockRepo.getStockOnHand(shopId, variantId);
+    expect(before[0]!.on_hand).toBe(10);
+
+    // Edit exactly as the UI previously did: resend the current on-hand as "opening" stock.
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      { ...mkProduct(productId, 'Probe Product Renamed'), updated_at: now },
+      [mkVariant(variantId, productId, 'Default', null)],
+      [{ variantId, qty: 10, unitCost: 100, note: 'Opening stock' }],
+      deviceId,
+      now,
+    );
+
+    const after = await stockRepo.getStockOnHand(shopId, variantId);
+    expect(after[0]!.on_hand).toBe(10);
+
+    // The only movement must still be the restock; no phantom opening movement.
+    const movements = await stockRepo.getMovementsForVariant(shopId, variantId);
+    expect(movements.map((m) => m.type)).toEqual(['restock']);
+  });
+
+  it('rolls back the whole catalog batch (product, variants, and movements) on a mid-batch failure', async () => {
+    const productId = uuidv7();
+    const sharedBarcode = generateEAN13();
+    // Two variants in the SAME save share a barcode: pre-batch checks pass because
+    // neither is persisted yet; the partial unique index must abort mid-batch.
+    const v1 = mkVariant(uuidv7(), productId, 'A', null, { barcode: sharedBarcode });
+    const v2 = mkVariant(uuidv7(), productId, 'B', null, { barcode: sharedBarcode });
+
+    await expect(
+      productRepo.saveProductWithVariantsAndOpeningStock(
+        mkProduct(productId, 'Rollback Product'),
+        [v1, v2],
+        [{ variantId: v1.id, qty: 5, unitCost: 100, note: 'Opening stock' }],
+        deviceId,
+        now,
+      ),
+    ).rejects.toThrow();
+
+    // Nothing survived: no product, no variants, no movements.
+    expect(await productRepo.getProductById(productId)).toBeUndefined();
+    expect(await productRepo.getVariants(shopId)).toHaveLength(0);
+    const allMovements = await stockRepo.getMovementsForVariant(shopId, v1.id);
+    expect(allMovements).toHaveLength(0);
+  });
+
+  it('rejects invalid Stock In rows before writing and leaves stock and cost unchanged', async () => {
+    const productId = uuidv7();
+    const variantId = uuidv7();
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'Validation Product'),
+      [mkVariant(variantId, productId, 'Default', null, { cost_price: 700 })],
+      [{ variantId, qty: 2, unitCost: 700 }],
+      deviceId,
+      now,
+    );
+
+    const invalidBatches: { qty: number; unitCost?: number }[] = [
+      { qty: 0 },
+      { qty: -5 },
+      { qty: 2.5 },
+      { qty: 5, unitCost: -1 },
+      { qty: 5, unitCost: 10.5 },
+    ];
+    for (const item of invalidBatches) {
+      await expect(
+        stockRepo.stockIn(shopId, [{ variantId, ...item }], deviceId, now),
+      ).rejects.toThrow(/must be a (positive|non-negative) integer/);
+    }
+
+    const movements = await stockRepo.getMovementsForVariant(shopId, variantId);
+    expect(movements).toHaveLength(1); // only the opening movement
+    expect(movements[0]!.type).toBe('opening');
+    const onHand = await stockRepo.getStockOnHand(shopId, variantId);
+    expect(onHand[0]!.on_hand).toBe(2);
+  });
+
+  it('Stock In without a purchase price does not change cost_price', async () => {
+    const productId = uuidv7();
+    const variantId = uuidv7();
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'No Price Update Product'),
+      [mkVariant(variantId, productId, 'Default', null, { cost_price: 450 })],
+      [{ variantId, qty: 4, unitCost: 450 }],
+      deviceId,
+      now,
+    );
+    await stockRepo.stockIn(shopId, [{ variantId, qty: 6, note: 'no price given' }], deviceId, now);
+    const inv = await stockRepo.getInventoryList(shopId, 'all');
+    expect(inv.find((i) => i.variant_id === variantId)!.cost_price).toBe(450);
+    expect(inv.find((i) => i.variant_id === variantId)!.on_hand).toBe(10);
+  });
+
+  it('rejects invalid adjustments and enforces the required note', async () => {
+    const productId = uuidv7();
+    const variantId = uuidv7();
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'Adjust Validation Product'),
+      [mkVariant(variantId, productId, 'Default', null)],
+      [{ variantId, qty: 5, unitCost: 100 }],
+      deviceId,
+      now,
+    );
+
+    await expect(stockRepo.adjustStock(shopId, variantId, -3, 'note', deviceId, now)).rejects.toThrow(
+      /non-negative integer/,
+    );
+    await expect(stockRepo.adjustStock(shopId, variantId, 2.5, 'note', deviceId, now)).rejects.toThrow(
+      /non-negative integer/,
+    );
+    await expect(stockRepo.adjustStock(shopId, variantId, 4, '   ', deviceId, now)).rejects.toThrow(
+      /requires a required note/,
+    );
+
+    const movements = await stockRepo.getMovementsForVariant(shopId, variantId);
+    expect(movements).toHaveLength(1); // only opening; nothing partial written
+  });
+
+  it('uses the shop default threshold with equality counting as low', async () => {
+    const productId = uuidv7();
+    const variantId = uuidv7();
+    // Shop default threshold is 3; variant has no override.
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'Default Threshold Product'),
+      [mkVariant(variantId, productId, 'Default', null)],
+      [{ variantId, qty: 3, unitCost: 100 }],
+      deviceId,
+      now,
+    );
+    const low = await stockRepo.getLowStockVariants(shopId);
+    const entry = low.find((l) => l.variant_id === variantId);
+    expect(entry).toBeDefined();
+    expect(entry!.threshold).toBe(3);
+    expect(entry!.on_hand).toBe(3);
+    expect((await stockRepo.getInventoryList(shopId, 'low')).map((i) => i.variant_id)).toContain(variantId);
+    expect((await stockRepo.getInventoryList(shopId, 'out')).map((i) => i.variant_id)).not.toContain(variantId);
+  });
+
+  it('reports zero on-hand for variants with no movements and includes them in the Out filter', async () => {
+    const productId = uuidv7();
+    const variantId = uuidv7();
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'No Movement Product'),
+      [mkVariant(variantId, productId, 'Default', 0)],
+      [],
+      deviceId,
+      now,
+    );
+    expect((await stockRepo.getStockOnHand(shopId, variantId))[0]!.on_hand).toBe(0);
+    expect((await stockRepo.getInventoryList(shopId, 'out')).map((i) => i.variant_id)).toContain(variantId);
+    // 0 <= threshold 0: matches both Low and Out, but the badge list counts it once.
+    const low = await stockRepo.getLowStockVariants(shopId);
+    expect(low.filter((l) => l.variant_id === variantId)).toHaveLength(1);
+  });
+
+  it('shows negative on-hand in the Negative filter and counts the variant once in the badge list', async () => {
+    const productId = uuidv7();
+    const variantId = uuidv7();
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'Negative Product'),
+      [mkVariant(variantId, productId, 'Default', 5)],
+      [{ variantId, qty: 2, unitCost: 100 }],
+      deviceId,
+      now,
+    );
+    // Simulate a future sale movement selling more than on-hand (negative stock never blocks a sale).
+    await stockRepo.addMovement({
+      id: uuidv7(),
+      shop_id: shopId,
+      variant_id: variantId,
+      qty_change: -5,
+      type: 'sale',
+      ref_type: 'sale',
+      ref_id: uuidv7(),
+      unit_cost: null,
+      note: null,
+      occurred_at: now,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null,
+      device_id: deviceId,
+      dirty: 1,
+      server_updated_at: null,
+    });
+    expect((await stockRepo.getStockOnHand(shopId, variantId))[0]!.on_hand).toBe(-3);
+    expect((await stockRepo.getInventoryList(shopId, 'negative')).map((i) => i.variant_id)).toContain(variantId);
+    expect((await stockRepo.getInventoryList(shopId, 'out')).map((i) => i.variant_id)).toContain(variantId);
+    // Matches both Low (threshold 5) and Out, but the badge list counts it once.
+    const low = await stockRepo.getLowStockVariants(shopId);
+    expect(low.filter((l) => l.variant_id === variantId)).toHaveLength(1);
+  });
+
+  it('soft-deletes variants removed in the editor inside the same save batch', async () => {
+    const productId = uuidv7();
+    const v1 = uuidv7();
+    const v2 = uuidv7();
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      mkProduct(productId, 'Remove Variant Product'),
+      [mkVariant(v1, productId, 'Keep', null), mkVariant(v2, productId, 'Drop', null)],
+      [
+        { variantId: v1, qty: 3, unitCost: 100 },
+        { variantId: v2, qty: 7, unitCost: 100 },
+      ],
+      deviceId,
+      now,
+    );
+
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      { ...mkProduct(productId, 'Remove Variant Product'), updated_at: now },
+      [mkVariant(v1, productId, 'Keep', null)],
+      [],
+      deviceId,
+      now,
+      [v2],
+    );
+
+    const active = await productRepo.getVariants(shopId, productId);
+    expect(active.map((v) => v.id)).toEqual([v1]);
+    // Soft delete preserves the historical ledger rows.
+    expect((await stockRepo.getMovementsForVariant(shopId, v2)).length).toBeGreaterThan(0);
+    const removedRow = await db.query<{ deleted_at: string | null }>(
+      `SELECT deleted_at FROM variants WHERE id = ?`,
+      [v2],
+    );
+    expect(removedRow[0]!.deleted_at).not.toBeNull();
   });
 
   it('asserts full rollback on batch failure', async () => {

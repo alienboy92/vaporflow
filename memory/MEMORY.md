@@ -1,1 +1,0 @@
-- [Phase 2 state](phase2-state.md) — Phase 2 persistence done; `better-sqlite3` ABI swap between host Node and Electron on desktop builds; NSIS signing blocked by host symlink privileges.
