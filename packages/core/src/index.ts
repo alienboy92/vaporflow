@@ -8,6 +8,7 @@
 export * from './types/index.js';
 export * from './money.js';
 export * from './uuid.js';
+export * from './barcode.js';
 export * from './db-adapter.js';
 export * from './dev-check.js';
 export * from './migrations/data.js';

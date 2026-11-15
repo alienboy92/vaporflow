@@ -4,12 +4,12 @@ import { useDb } from '../context/DbProvider';
 import { StockRepo, ShopRepo } from '@vaporflow/core';
 import {
   SalePlaceholder,
-  ProductsPlaceholder,
-  StockPlaceholder,
   SalesPlaceholder,
   ReportsPlaceholder,
   ExpensesPlaceholder,
 } from '../screens/PlaceholderScreens';
+import { ProductsScreen } from '../screens/ProductsScreen';
+import { StockScreen } from '../screens/StockScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { LockScreen } from './LockScreen';
 import { useSecurity } from './use-security';
@@ -160,8 +160,8 @@ export function Shell() {
         <main className="flex-1 overflow-y-auto">
           <Routes>
             <Route path="/" element={<SalePlaceholder />} />
-            <Route path="/products" element={<ProductsPlaceholder />} />
-            <Route path="/stock" element={<StockPlaceholder />} />
+            <Route path="/products" element={<ProductsScreen />} />
+            <Route path="/stock" element={<StockScreen />} />
             <Route path="/sales" element={<SalesPlaceholder />} />
             <Route path="/reports" element={<ReportsPlaceholder />} />
             <Route path="/expenses" element={<ExpensesPlaceholder />} />

@@ -1,4 +1,2 @@
-export interface VaporFlowAPI {
-    platform: 'desktop';
-}
+export {};
 //# sourceMappingURL=preload.d.ts.map
