@@ -3,6 +3,7 @@ import { useDb } from '../context/DbProvider';
 import { StockRepo, ShopRepo, ProductRepo } from '@vaporflow/core';
 import type { Shop, StockMovement } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
+import { notifyStockChanged } from '../utils/stock-events';
 
 interface InventoryItem {
   product_id: string;
@@ -158,6 +159,7 @@ export function StockScreen() {
       const stockRepo = new StockRepo(db);
       const now = new Date().toISOString();
       await stockRepo.stockIn(shop.id, parsedItems, shop.device_id, now);
+      notifyStockChanged();
       setSuccess(`Stock In recorded: ${parsedItems.length} item${parsedItems.length === 1 ? '' : 's'}.`);
       setStockInOpen(false);
       void loadData();
@@ -197,6 +199,7 @@ export function StockScreen() {
       }
 
       await stockRepo.adjustStock(shop.id, adjustVariantId, counted, adjustNote.trim(), shop.device_id, now);
+      notifyStockChanged();
       setSuccess('Stock adjustment recorded successfully.');
       setAdjustOpen(false);
       void loadData();

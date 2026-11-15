@@ -10,6 +10,7 @@ import {
 } from '@vaporflow/core';
 import type { Product, Variant, Category, Shop } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
+import { notifyStockChanged } from '../utils/stock-events';
 
 interface VariantFormState {
   id: string;
@@ -288,6 +289,7 @@ export function ProductsScreen() {
         removedVariantIds,
       );
 
+      notifyStockChanged();
       setSuccess('Product saved successfully.');
       setRemovedVariantIds([]);
       setModalOpen(false);
@@ -304,6 +306,7 @@ export function ProductsScreen() {
       const productRepo = new ProductRepo(db);
       const now = new Date().toISOString();
       await productRepo.softDeleteProduct(productId, now);
+      notifyStockChanged();
       setDeleteConfirmId(null);
       void loadData();
     } catch (err) {

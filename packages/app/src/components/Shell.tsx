@@ -14,6 +14,7 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { LockScreen } from './LockScreen';
 import { useSecurity } from './use-security';
 import { globalErrorLogger } from '../utils/logger';
+import { STOCK_CHANGED_EVENT } from '../utils/stock-events';
 
 export function Shell() {
   const db = useDb();
@@ -42,11 +43,16 @@ export function Shell() {
     }
     loadMeta();
     const interval = setInterval(loadMeta, 30000);
+    const onStockChanged = () => {
+      void loadMeta();
+    };
+    window.addEventListener(STOCK_CHANGED_EVENT, onStockChanged);
     return () => {
       active = false;
       clearInterval(interval);
+      window.removeEventListener(STOCK_CHANGED_EVENT, onStockChanged);
     };
-  }, [db]);
+  }, [db, location.pathname]);
 
   if (security.error)
     return (

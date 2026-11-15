@@ -3,6 +3,8 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { MemoryRouter } from 'react-router-dom';
 import { Shell } from './Shell';
 import { App } from '../App';
+import { notifyStockChanged } from '../utils/stock-events';
+import { uuidv7 } from '@vaporflow/core';
 import type { ReactNode } from 'react';
 
 const state = vi.hoisted(() => ({ db: { query: vi.fn() }, values: {} as Record<string, string> }));
@@ -54,6 +56,51 @@ it('fails closed when security settings cannot be read', async () => {
   await mountShell();
   expect(JSON.stringify(renderer!.toJSON())).toContain('Could not load security settings');
   expect(renderer!.root.findAllByType('nav')).toHaveLength(0);
+});
+it('refreshes the low-stock badge immediately when notified of stock changes', async () => {
+  const shopRow = {
+    id: uuidv7(),
+    shop_id: '',
+    name: 'Vapor Shop Central',
+    address: null,
+    phone: null,
+    logo_base64: null,
+    show_logo_on_receipt: 1,
+    currency_code: 'PKR',
+    currency_decimals: 0,
+    receipt_footer: 'Thank you',
+    default_low_stock_threshold: 3,
+    created_at: '2026-11-15T12:00:00.000Z',
+    updated_at: '2026-11-15T12:00:00.000Z',
+    deleted_at: null,
+    device_id: uuidv7(),
+    dirty: 0,
+    server_updated_at: null,
+  };
+  shopRow.shop_id = shopRow.id;
+  const lowRow: { variant_id: string; on_hand: number; threshold: number }[] = [
+    { variant_id: uuidv7(), on_hand: 2, threshold: 3 },
+  ];
+  state.values = { pin_hash: '', idle_lock_minutes: '0' };
+  state.db.query
+    .mockReset()
+    .mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM settings')) {
+        return Object.entries(state.values).map(([key, value]) => ({ key, value }));
+      }
+      if (sql.includes('FROM shops')) return [shopRow];
+      if (sql.includes('COALESCE(sm.on_hand, 0) <= COALESCE(v.low_stock_threshold')) return lowRow;
+      return [];
+    });
+  await mountShell();
+  const json = () => JSON.stringify(renderer!.toJSON());
+  expect(json()).toContain('low stock');
+
+  lowRow.length = 0;
+  await act(async () => {
+    notifyStockChanged();
+  });
+  expect(json()).not.toContain('low stock');
 });
 it('applies PIN enabling and idle changes immediately and removes an open drawer on lock', async () => {
   state.values = { pin_hash: '', idle_lock_minutes: '0' };
