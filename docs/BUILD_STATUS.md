@@ -10,7 +10,7 @@ Updated 15 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS
 | 1 — Core/schema    | READY                          | Correction commit `40a23e8`; [Phase 1 review](PHASE1_REVIEW.md).                                                                                                                      |
 | 2 — Persistence    | READY FOR HARDWARE CHECK       | Code corrections, 43 tests, Electron native contract, packaged Windows restart check and Android APK build; [Phase 2 review](PHASE2_REVIEW.md). Android device acceptance is pending. |
 | 3 — Setup/settings | READY FOR HARDWARE CHECK       | Corrections and 53 automated tests; see [Phase 3 review](PHASE3_REVIEW.md).                                                                                                           |
-| 4 — Products/stock | READY FOR HARDWARE CHECK       | Catalog editor, EAN-13 barcode generator, atomic opening stock and retry guard, barcode uniqueness, soft-deletes, inventory filters, multi-line stock in, adjustments, history, immediate badge refresh, and 66 tests after review repair; review findings all resolved. |
+| 4 — Products/stock | READY FOR HARDWARE CHECK       | Catalog editor, EAN-13 barcode generator, atomic opening stock and retry guard, barcode uniqueness, soft-deletes, inventory filters, multi-line stock in, adjustments, history, immediate badge refresh, and 66 tests after review repair; see [Phase 4 review](PHASE4_REVIEW.md). |
 
 Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests remain scheduled in 8B.
 
