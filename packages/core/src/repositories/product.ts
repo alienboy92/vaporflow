@@ -1,23 +1,30 @@
+import { IdSchema, Product, Variant, ProductSchema, VariantSchema } from '../types/schemas.js';
+import { readRows } from '../query.js';
+import { DbAdapter } from '../db-adapter.js';
 /**
  * Product and Variant repository.
  */
-import { DbAdapter } from '../db-adapter.js';
-import { Product, Variant, ProductSchema, VariantSchema } from '../types/schemas.js';
 
 export class ProductRepo {
   constructor(private db: DbAdapter) {}
 
   async getProducts(shopId: string): Promise<Product[]> {
-    return this.db.query<Product>(
+    IdSchema.parse(shopId);
+    return readRows(
+      this.db,
+      ProductSchema,
       `SELECT * FROM products WHERE shop_id = ? AND deleted_at IS NULL ORDER BY name ASC`,
-      [shopId]
+      [shopId],
     );
   }
 
   async getProductById(id: string): Promise<Product | undefined> {
-    const rows = await this.db.query<Product>(
+    IdSchema.parse(id);
+    const rows = await readRows(
+      this.db,
+      ProductSchema,
       `SELECT * FROM products WHERE id = ? AND deleted_at IS NULL`,
-      [id]
+      [id],
     );
     return rows[0];
   }
@@ -51,35 +58,46 @@ export class ProductRepo {
         validated.device_id,
         validated.dirty,
         validated.server_updated_at,
-      ]
+      ],
     );
   }
 
   async getVariants(shopId: string, productId?: string): Promise<Variant[]> {
+    IdSchema.parse(shopId);
     if (productId) {
-      return this.db.query<Variant>(
+      return readRows(
+        this.db,
+        VariantSchema,
         `SELECT * FROM variants WHERE shop_id = ? AND product_id = ? AND deleted_at IS NULL ORDER BY name ASC`,
-        [shopId, productId]
+        [shopId, productId],
       );
     }
-    return this.db.query<Variant>(
+    return readRows(
+      this.db,
+      VariantSchema,
       `SELECT * FROM variants WHERE shop_id = ? AND deleted_at IS NULL ORDER BY name ASC`,
-      [shopId]
+      [shopId],
     );
   }
 
   async getVariantById(id: string): Promise<Variant | undefined> {
-    const rows = await this.db.query<Variant>(
+    IdSchema.parse(id);
+    const rows = await readRows(
+      this.db,
+      VariantSchema,
       `SELECT * FROM variants WHERE id = ? AND deleted_at IS NULL`,
-      [id]
+      [id],
     );
     return rows[0];
   }
 
   async getVariantByBarcode(shopId: string, barcode: string): Promise<Variant | undefined> {
-    const rows = await this.db.query<Variant>(
+    IdSchema.parse(shopId);
+    const rows = await readRows(
+      this.db,
+      VariantSchema,
       `SELECT * FROM variants WHERE shop_id = ? AND barcode = ? AND deleted_at IS NULL`,
-      [shopId, barcode]
+      [shopId, barcode],
     );
     return rows[0];
   }
@@ -121,7 +139,7 @@ export class ProductRepo {
         validated.device_id,
         validated.dirty,
         validated.server_updated_at,
-      ]
+      ],
     );
   }
 }

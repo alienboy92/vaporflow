@@ -3,7 +3,7 @@
 -- 1. shops (Mutable)
 CREATE TABLE shops (
   id TEXT PRIMARY KEY,
-  shop_id TEXT,
+  shop_id TEXT NOT NULL CHECK(shop_id = id),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT,
@@ -115,7 +115,7 @@ CREATE TABLE stock_movements (
   dirty INTEGER NOT NULL DEFAULT 1,
   server_updated_at TEXT,
   variant_id TEXT NOT NULL,
-  qty_change INTEGER NOT NULL,
+  qty_change INTEGER NOT NULL CHECK(typeof(qty_change) = 'integer' AND qty_change <> 0),
   type TEXT NOT NULL CHECK(type IN ('opening','restock','adjustment','sale','return')),
   ref_type TEXT,
   ref_id TEXT,
@@ -158,7 +158,7 @@ CREATE TABLE sale_items (
   variant_id TEXT NOT NULL,
   product_name TEXT NOT NULL,
   variant_name TEXT NOT NULL,
-  qty INTEGER NOT NULL,
+  qty INTEGER NOT NULL CHECK(typeof(qty) = 'integer' AND qty > 0),
   list_price INTEGER NOT NULL,
   unit_price INTEGER NOT NULL,
   unit_cost INTEGER NOT NULL,
@@ -195,7 +195,7 @@ CREATE TABLE return_items (
   return_id TEXT NOT NULL,
   sale_item_id TEXT NOT NULL,
   variant_id TEXT NOT NULL,
-  qty INTEGER NOT NULL,
+  qty INTEGER NOT NULL CHECK(typeof(qty) = 'integer' AND qty > 0),
   refund_amount INTEGER NOT NULL,
   unit_cost INTEGER NOT NULL,
   restocked INTEGER NOT NULL DEFAULT 0
@@ -213,6 +213,6 @@ CREATE INDEX idx_stock_movements_variant_id ON stock_movements(variant_id);
 CREATE INDEX idx_sales_sold_at ON sales(sold_at);
 
 CREATE VIEW v_stock_on_hand AS
-SELECT variant_id, SUM(qty_change) as on_hand
+SELECT shop_id, variant_id, SUM(qty_change) as on_hand
 FROM stock_movements
-GROUP BY variant_id;
+GROUP BY shop_id, variant_id;

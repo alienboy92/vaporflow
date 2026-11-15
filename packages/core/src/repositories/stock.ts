@@ -1,33 +1,41 @@
+import { z } from 'zod';
+import {
+  IdSchema,
+  StockOnHandSchema,
+  StockMovement,
+  StockOnHand,
+  StockMovementSchema,
+} from '../types/schemas.js';
+import { readRows } from '../query.js';
+import { DbAdapter } from '../db-adapter.js';
 /**
  * Stock repository and stock calculations.
  */
-import { DbAdapter } from '../db-adapter.js';
-import { StockMovement, StockOnHand, StockMovementSchema } from '../types/schemas.js';
 
 export class StockRepo {
   constructor(private db: DbAdapter) {}
 
   async getStockOnHand(shopId: string, variantId?: string): Promise<StockOnHand[]> {
-    if (variantId) {
-      return this.db.query<StockOnHand>(
-        `SELECT variant_id, COALESCE(SUM(qty_change), 0) AS on_hand
-         FROM stock_movements
-         WHERE shop_id = ? AND variant_id = ?
-         GROUP BY variant_id`,
-        [shopId, variantId]
-      );
-    }
-    return this.db.query<StockOnHand>(
-      `SELECT variant_id, COALESCE(SUM(qty_change), 0) AS on_hand
-       FROM stock_movements
-       WHERE shop_id = ?
-       GROUP BY variant_id`,
-      [shopId]
+    IdSchema.parse(shopId);
+    if (variantId) IdSchema.parse(variantId);
+    return readRows(
+      this.db,
+      StockOnHandSchema,
+      `SELECT v.id AS variant_id, COALESCE(SUM(m.qty_change),0) AS on_hand
+       FROM variants v LEFT JOIN stock_movements m ON m.variant_id = v.id AND m.shop_id = v.shop_id
+       WHERE v.shop_id = ? AND v.deleted_at IS NULL AND (? IS NULL OR v.id = ?)
+       GROUP BY v.id`,
+      [shopId, variantId ?? null, variantId ?? null],
     );
   }
 
-  async getLowStockVariants(shopId: string): Promise<{ variant_id: string; on_hand: number; threshold: number }[]> {
-    return this.db.query(
+  async getLowStockVariants(
+    shopId: string,
+  ): Promise<{ variant_id: string; on_hand: number; threshold: number }[]> {
+    IdSchema.parse(shopId);
+    return readRows(
+      this.db,
+      z.object({ variant_id: IdSchema, on_hand: z.number().int(), threshold: z.number().int() }),
       `SELECT
          v.id AS variant_id,
          COALESCE(sm.on_hand, 0) AS on_hand,
@@ -45,7 +53,7 @@ export class StockRepo {
          AND v.track_stock = 1
          AND v.is_active = 1
          AND COALESCE(sm.on_hand, 0) <= COALESCE(v.low_stock_threshold, s.default_low_stock_threshold, 3)`,
-      [shopId, shopId]
+      [shopId, shopId],
     );
   }
 
@@ -71,14 +79,17 @@ export class StockRepo {
         validated.device_id,
         validated.dirty,
         validated.server_updated_at,
-      ]
+      ],
     );
   }
 
   async getMovementsForVariant(shopId: string, variantId: string): Promise<StockMovement[]> {
-    return this.db.query<StockMovement>(
+    IdSchema.parse(shopId);
+    return readRows(
+      this.db,
+      StockMovementSchema,
       `SELECT * FROM stock_movements WHERE shop_id = ? AND variant_id = ? ORDER BY occurred_at DESC, created_at DESC`,
-      [shopId, variantId]
+      [shopId, variantId],
     );
   }
 }

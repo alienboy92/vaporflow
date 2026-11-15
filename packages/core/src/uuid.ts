@@ -1,25 +1,14 @@
-/**
- * UUID v7 generation utility for VaporFlow.
- * UUID v7 features a time-ordered prefix (UNIX timestamp in milliseconds).
- */
-import { randomBytes } from 'node:crypto';
-
+/** Device-generated UUID v7 using Web Crypto on every target platform. */
 export function uuidv7(): string {
-  const now = Date.now();
-  const timestampHex = now.toString(16).padStart(12, '0'); // 48-bit timestamp
-
-  const rand = randomBytes(10);
-
-  const timeHiAndVer = (((now / 0x10000) & 0x0fff) | 0x7000).toString(16).padStart(4, '0');
-  const clockSeqHi = ((rand[0]! & 0x3f) | 0x80).toString(16).padStart(2, '0');
-  const clockSeqLow = rand[1]!.toString(16).padStart(2, '0');
-  const node = rand.subarray(2, 8).toString('hex');
-
-  return [
-    timestampHex.substring(0, 8),
-    timestampHex.substring(8, 12),
-    timeHiAndVer,
-    clockSeqHi + clockSeqLow,
-    node,
-  ].join('-');
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  let timestamp = BigInt(Date.now());
+  for (let i = 5; i >= 0; i--) {
+    bytes[i] = Number(timestamp & 255n);
+    timestamp >>= 8n;
+  }
+  bytes[6] = (bytes[6]! & 15) | 112;
+  bytes[8] = (bytes[8]! & 63) | 128;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

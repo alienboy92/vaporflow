@@ -1,23 +1,27 @@
+import { reportRange } from '../dates.js';
+import { TimestampSchema, IdSchema, Expense, ExpenseSchema } from '../types/schemas.js';
+import { readRows } from '../query.js';
+import { DbAdapter } from '../db-adapter.js';
 /**
  * Expense repository.
  */
-import { DbAdapter } from '../db-adapter.js';
-import { Expense, ExpenseSchema } from '../types/schemas.js';
 
 export class ExpenseRepo {
   constructor(private db: DbAdapter) {}
 
   async getAll(shopId: string, startDate?: string, endDate?: string): Promise<Expense[]> {
+    IdSchema.parse(shopId);
     let sql = `SELECT * FROM expenses WHERE shop_id = ? AND deleted_at IS NULL`;
     const params: unknown[] = [shopId];
 
     if (startDate && endDate) {
       sql += ` AND expense_date BETWEEN ? AND ?`;
-      params.push(startDate.substring(0, 10), endDate.substring(0, 10));
+      const { dateOnlyStart, dateOnlyEnd } = reportRange(startDate, endDate);
+      params.push(dateOnlyStart, dateOnlyEnd);
     }
     sql += ` ORDER BY expense_date DESC, created_at DESC`;
 
-    return this.db.query<Expense>(sql, params);
+    return readRows(this.db, ExpenseSchema, sql, params);
   }
 
   async save(expense: Expense): Promise<void> {
@@ -43,14 +47,16 @@ export class ExpenseRepo {
         validated.created_at,
         validated.updated_at,
         validated.device_id,
-      ]
+      ],
     );
   }
 
   async softDelete(id: string, updatedAt: string): Promise<void> {
+    IdSchema.parse(id);
+    TimestampSchema.parse(updatedAt);
     await this.db.query(
       `UPDATE expenses SET deleted_at = ?, updated_at = ?, dirty = 1 WHERE id = ?`,
-      [updatedAt, updatedAt, id]
+      [updatedAt, updatedAt, id],
     );
   }
 }

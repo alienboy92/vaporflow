@@ -1,25 +1,50 @@
+import {
+  SaleItemSchema,
+  SaleSchema,
+  IdSchema,
+  TimestampSchema,
+  VariantSchema,
+  Sale,
+  SaleItem,
+  CompleteSaleInput,
+  CompleteSaleInputSchema,
+} from '../types/schemas.js';
+import { readRows } from '../query.js';
+import { addMoney, fromInteger, allocateDiscount } from '../money.js';
+import { DbAdapter } from '../db-adapter.js';
 /**
  * Sale repository and completeSale atomic batch.
  */
-import { DbAdapter } from '../db-adapter.js';
-import { Sale, SaleItem, CompleteSaleInput, CompleteSaleInputSchema } from '../types/schemas.js';
-import { allocateDiscount } from '../money.js';
 
 export class SaleRepo {
   constructor(private db: DbAdapter) {}
 
   async getSaleById(id: string): Promise<{ sale: Sale; items: SaleItem[] } | undefined> {
-    const sales = await this.db.query<Sale>(`SELECT * FROM sales WHERE id = ? AND deleted_at IS NULL`, [id]);
+    IdSchema.parse(id);
+    const sales = await readRows(
+      this.db,
+      SaleSchema,
+      `SELECT * FROM sales WHERE id = ? AND deleted_at IS NULL`,
+      [id],
+    );
     const sale = sales[0];
     if (!sale) return undefined;
-    const items = await this.db.query<SaleItem>(`SELECT * FROM sale_items WHERE sale_id = ? AND deleted_at IS NULL`, [id]);
+    const items = await readRows(
+      this.db,
+      SaleItemSchema,
+      `SELECT * FROM sale_items WHERE sale_id = ? AND deleted_at IS NULL`,
+      [id],
+    );
     return { sale, items };
   }
 
   async getSales(shopId: string): Promise<Sale[]> {
-    return this.db.query<Sale>(
+    IdSchema.parse(shopId);
+    return readRows(
+      this.db,
+      SaleSchema,
       `SELECT * FROM sales WHERE shop_id = ? AND deleted_at IS NULL ORDER BY sold_at DESC, created_at DESC`,
-      [shopId]
+      [shopId],
     );
   }
 
@@ -35,11 +60,18 @@ export class SaleRepo {
     saleId: string,
     itemIds: string[],
     movementIds: string[],
-    nowIso: string
+    nowIso: string,
   ): Promise<{ sale: Sale; items: SaleItem[] }> {
     const validatedInput = CompleteSaleInputSchema.parse(input);
+    TimestampSchema.parse(nowIso);
+    const ids = [saleId, ...itemIds, ...movementIds];
+    ids.forEach((id) => IdSchema.parse(id));
+    if (new Set(ids).size !== ids.length) throw new Error('Duplicate record IDs');
 
-    if (validatedInput.lines.length !== itemIds.length || validatedInput.lines.length !== movementIds.length) {
+    if (
+      validatedInput.lines.length !== itemIds.length ||
+      validatedInput.lines.length !== movementIds.length
+    ) {
       throw new Error('Inconsistent ID array lengths for sale completion');
     }
 
@@ -56,15 +88,17 @@ export class SaleRepo {
 
     for (const line of validatedInput.lines) {
       const variants = await this.db.query<{ cost_price: number; shop_id: string }>(
-        `SELECT cost_price, shop_id FROM variants WHERE id = ? AND deleted_at IS NULL`,
-        [line.variant_id]
+        `SELECT * FROM variants WHERE id = ? AND deleted_at IS NULL`,
+        [line.variant_id],
       );
-      const v = variants[0];
+      const v = variants[0] ? VariantSchema.parse(variants[0]) : undefined;
       if (!v) {
         throw new Error(`Variant ${line.variant_id} not found`);
       }
       if (v.shop_id !== validatedInput.shop_id) {
-        throw new Error(`Variant ${line.variant_id} does not belong to shop ${validatedInput.shop_id}`);
+        throw new Error(
+          `Variant ${line.variant_id} does not belong to shop ${validatedInput.shop_id}`,
+        );
       }
 
       resolvedLines.push({
@@ -78,8 +112,11 @@ export class SaleRepo {
       });
     }
 
-    const subtotal = resolvedLines.reduce((sum, item) => sum + item.unit_price * item.qty, 0);
-    const total = Math.max(0, subtotal - validatedInput.discount_amount);
+    const subtotal = resolvedLines.reduce(
+      (sum, item) => addMoney(sum, fromInteger(BigInt(item.unit_price) * BigInt(item.qty))),
+      0,
+    );
+    const total = addMoney(subtotal, -validatedInput.discount_amount);
 
     const lineGrosses = resolvedLines.map((l) => ({ unit_price: l.unit_price, qty: l.qty }));
     const netTotals = allocateDiscount(lineGrosses, validatedInput.discount_amount);
@@ -195,6 +232,17 @@ export class SaleRepo {
       });
     }
 
+    // Check the catalog inside the write transaction as well as before it.
+    statements.unshift(
+      ...resolvedLines.map((line, index) => ({
+        sql: `INSERT INTO _operation_guards (id, valid)
+        SELECT ?, CASE WHEN EXISTS (SELECT 1 FROM variants WHERE id = ? AND shop_id = ? AND deleted_at IS NULL AND cost_price = ?) THEN 1 ELSE 0 END`,
+        params: [itemIds[index], line.variant_id, validatedInput.shop_id, line.unit_cost],
+      })),
+    );
+    statements.push(
+      ...itemIds.map((id) => ({ sql: 'DELETE FROM _operation_guards WHERE id = ?', params: [id] })),
+    );
     await this.db.batch(statements);
 
     return { sale, items };

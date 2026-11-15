@@ -16,3 +16,5 @@ export * from './repositories/return.js';
 export * from './repositories/expense.js';
 export * from './repositories/report.js';
 export * from './repositories/settings.js';
+
+export type { DbAdapter } from './db-adapter.js';

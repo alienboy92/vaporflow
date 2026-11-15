@@ -6,6 +6,7 @@
 CREATE OR REPLACE FUNCTION set_server_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 BEGIN
   NEW.server_updated_at := clock_timestamp();
@@ -20,6 +21,7 @@ $$;
 -- shops (no shop_id FK because it is the shop)
 CREATE TABLE shops (
   id UUID PRIMARY KEY,
+  shop_id UUID NOT NULL CHECK (shop_id = id),
   name TEXT NOT NULL,
   address TEXT,
   phone TEXT,
@@ -39,18 +41,19 @@ CREATE TABLE shops (
 -- shop_members (Postgres only - links users to shops)
 CREATE TABLE shop_members (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   role TEXT NOT NULL DEFAULT 'owner',
   created_at TIMESTAMPTZ DEFAULT now(),
   server_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(shop_id, user_id)
+  UNIQUE(shop_id),
+  CHECK (role = 'owner')
 );
 
 -- devices
 CREATE TABLE devices (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
   name TEXT NOT NULL,
   code TEXT NOT NULL,
   last_seen_at TIMESTAMPTZ,
@@ -64,7 +67,7 @@ CREATE TABLE devices (
 -- categories
 CREATE TABLE categories (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL,
@@ -77,8 +80,8 @@ CREATE TABLE categories (
 -- products
 CREATE TABLE products (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
+  category_id UUID REFERENCES categories(id) ON DELETE RESTRICT,
   name TEXT NOT NULL,
   brand TEXT,
   notes TEXT,
@@ -93,8 +96,8 @@ CREATE TABLE products (
 -- variants
 CREATE TABLE variants (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
   name TEXT NOT NULL DEFAULT 'Default',
   sku TEXT,
   barcode TEXT,
@@ -113,8 +116,8 @@ CREATE TABLE variants (
 -- stock_movements (ledger - insert only)
 CREATE TABLE stock_movements (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  variant_id UUID NOT NULL REFERENCES variants(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
+  variant_id UUID NOT NULL REFERENCES variants(id) ON DELETE RESTRICT,
   qty_change INTEGER NOT NULL CHECK(qty_change != 0),
   type TEXT NOT NULL CHECK(type IN ('opening','restock','adjustment','sale','return')),
   ref_type TEXT,
@@ -132,7 +135,7 @@ CREATE TABLE stock_movements (
 -- sales (ledger - insert only)
 CREATE TABLE sales (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
   receipt_no TEXT NOT NULL,
   sold_at TIMESTAMPTZ NOT NULL,
   subtotal INTEGER NOT NULL,
@@ -151,9 +154,9 @@ CREATE TABLE sales (
 -- sale_items (ledger - insert only)
 CREATE TABLE sale_items (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  sale_id UUID NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
-  variant_id UUID NOT NULL REFERENCES variants(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
+  sale_id UUID NOT NULL REFERENCES sales(id) ON DELETE RESTRICT,
+  variant_id UUID NOT NULL REFERENCES variants(id) ON DELETE RESTRICT,
   product_name TEXT NOT NULL,
   variant_name TEXT NOT NULL,
   qty INTEGER NOT NULL,
@@ -171,8 +174,8 @@ CREATE TABLE sale_items (
 -- returns (ledger - insert only)
 CREATE TABLE returns (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  sale_id UUID NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
+  sale_id UUID NOT NULL REFERENCES sales(id) ON DELETE RESTRICT,
   returned_at TIMESTAMPTZ NOT NULL,
   refund_amount INTEGER NOT NULL,
   refund_method TEXT NOT NULL CHECK(refund_method IN ('cash','online')),
@@ -187,10 +190,10 @@ CREATE TABLE returns (
 -- return_items (ledger - insert only)
 CREATE TABLE return_items (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  return_id UUID NOT NULL REFERENCES returns(id) ON DELETE CASCADE,
-  sale_item_id UUID NOT NULL REFERENCES sale_items(id) ON DELETE CASCADE,
-  variant_id UUID NOT NULL REFERENCES variants(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
+  return_id UUID NOT NULL REFERENCES returns(id) ON DELETE RESTRICT,
+  sale_item_id UUID NOT NULL REFERENCES sale_items(id) ON DELETE RESTRICT,
+  variant_id UUID NOT NULL REFERENCES variants(id) ON DELETE RESTRICT,
   qty INTEGER NOT NULL,
   refund_amount INTEGER NOT NULL,
   unit_cost INTEGER NOT NULL,
@@ -205,7 +208,7 @@ CREATE TABLE return_items (
 -- expenses
 CREATE TABLE expenses (
   id UUID PRIMARY KEY,
-  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+  shop_id UUID NOT NULL REFERENCES shops(id) ON DELETE RESTRICT,
   expense_date DATE NOT NULL,
   amount INTEGER NOT NULL,
   category TEXT NOT NULL,
@@ -253,320 +256,140 @@ CREATE INDEX idx_return_items_sync ON return_items (shop_id, server_updated_at, 
 CREATE INDEX idx_expenses_sync ON expenses (shop_id, server_updated_at, id);
 CREATE INDEX idx_shops_sync ON shops (id, server_updated_at);
 
--- ---------------------------------------------------------------------------
--- 5. Views
--- ---------------------------------------------------------------------------
-CREATE VIEW v_stock_on_hand AS
-SELECT shop_id, variant_id, SUM(qty_change) AS on_hand
-FROM stock_movements
-GROUP BY shop_id, variant_id;
-
--- ---------------------------------------------------------------------------
--- 6. Row Level Security (RLS)
--- ---------------------------------------------------------------------------
-ALTER TABLE shops ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shop_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE variants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE returns ENABLE ROW LEVEL SECURITY;
-ALTER TABLE return_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
-
--- shop_members policy: users can only see/modify rows where user_id = auth.uid()
-CREATE POLICY shop_members_policy ON shop_members
-  FOR ALL
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
-
--- shops policy: accessible if shop id is in user's shop_members
-CREATE POLICY shops_access_policy ON shops
-  FOR ALL
-  USING (id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
--- other tables policy: accessible if shop_id is in user's shop_members
-CREATE POLICY devices_access_policy ON devices FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY categories_access_policy ON categories FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY products_access_policy ON products FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY variants_access_policy ON variants FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY stock_movements_access_policy ON stock_movements FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY sales_access_policy ON sales FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY sale_items_access_policy ON sale_items FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY returns_access_policy ON returns FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY return_items_access_policy ON return_items FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
-CREATE POLICY expenses_access_policy ON expenses FOR ALL
-  USING (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()))
-  WITH CHECK (shop_id IN (SELECT shop_id FROM shop_members WHERE user_id = auth.uid()));
-
--- ---------------------------------------------------------------------------
--- 7. RPC Functions (Security Definer hardened with search_path)
--- ---------------------------------------------------------------------------
-
--- 1. claim_shop(p_shop_id UUID)
-CREATE OR REPLACE FUNCTION claim_shop(p_shop_id UUID)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  v_user_id UUID;
-  v_exists BOOLEAN;
+-- Tenant-consistent foreign keys. A valid ID from another shop is not sufficient.
+DO $$
+DECLARE t text;
 BEGIN
-  v_user_id := auth.uid();
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
-
-  -- Check if shop_id already has any owner/member (prevent claiming an already claimed shop)
-  SELECT EXISTS (
-    SELECT 1 FROM shop_members WHERE shop_id = p_shop_id
-  ) INTO v_exists;
-
-  IF v_exists THEN
-    RETURN FALSE;
-  END IF;
-
-  INSERT INTO shop_members (shop_id, user_id, role)
-  VALUES (p_shop_id, v_user_id, 'owner')
-  ON CONFLICT (shop_id, user_id) DO NOTHING;
-
-  RETURN TRUE;
-END;
-$$;
-
--- 2. sync_push(p_table TEXT, p_rows JSONB)
-CREATE OR REPLACE FUNCTION sync_push(p_table TEXT, p_rows JSONB)
-RETURNS INTEGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  v_user_id UUID;
-  v_row JSONB;
-  v_shop_id UUID;
-  v_is_member BOOLEAN;
-  v_applied_count INTEGER := 0;
-  v_is_mutable BOOLEAN;
-BEGIN
-  v_user_id := auth.uid();
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
-
-  IF p_table NOT IN ('shops', 'devices', 'categories', 'products', 'variants', 'stock_movements', 'sales', 'sale_items', 'returns', 'return_items', 'expenses') THEN
-    RAISE EXCEPTION 'Invalid table name: %', p_table;
-  END IF;
-
-  v_is_mutable := p_table IN ('shops', 'devices', 'categories', 'products', 'variants', 'expenses');
-
-  FOR v_row IN SELECT * FROM jsonb_array_elements(p_rows)
-  LOOP
-    IF p_table = 'shops' THEN
-      v_shop_id := (v_row->>'id')::UUID;
-    ELSE
-      v_shop_id := (v_row->>'shop_id')::UUID;
-    END IF;
-
-    IF v_shop_id IS NULL THEN
-      CONTINUE;
-    END IF;
-
-    -- Verify user is a member of the shop
-    SELECT EXISTS (
-      SELECT 1 FROM shop_members WHERE shop_id = v_shop_id AND user_id = v_user_id
-    ) INTO v_is_member;
-
-    IF NOT v_is_member THEN
-      CONTINUE;
-    END IF;
-
-    IF v_is_mutable THEN
-      IF p_table = 'shops' THEN
-        INSERT INTO shops SELECT * FROM jsonb_populate_record(null::shops, v_row)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          address = EXCLUDED.address,
-          phone = EXCLUDED.phone,
-          logo_base64 = EXCLUDED.logo_base64,
-          show_logo_on_receipt = EXCLUDED.show_logo_on_receipt,
-          currency_code = EXCLUDED.currency_code,
-          currency_decimals = EXCLUDED.currency_decimals,
-          receipt_footer = EXCLUDED.receipt_footer,
-          default_low_stock_threshold = EXCLUDED.default_low_stock_threshold,
-          updated_at = EXCLUDED.updated_at,
-          deleted_at = EXCLUDED.deleted_at,
-          device_id = EXCLUDED.device_id
-        WHERE EXCLUDED.updated_at > shops.updated_at;
-      ELSIF p_table = 'devices' THEN
-        INSERT INTO devices SELECT * FROM jsonb_populate_record(null::devices, v_row)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          code = EXCLUDED.code,
-          last_seen_at = EXCLUDED.last_seen_at,
-          updated_at = EXCLUDED.updated_at,
-          deleted_at = EXCLUDED.deleted_at,
-          device_id = EXCLUDED.device_id
-        WHERE EXCLUDED.updated_at > devices.updated_at;
-      ELSIF p_table = 'categories' THEN
-        INSERT INTO categories SELECT * FROM jsonb_populate_record(null::categories, v_row)
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          sort_order = EXCLUDED.sort_order,
-          updated_at = EXCLUDED.updated_at,
-          deleted_at = EXCLUDED.deleted_at,
-          device_id = EXCLUDED.device_id
-        WHERE EXCLUDED.updated_at > categories.updated_at;
-      ELSIF p_table = 'products' THEN
-        INSERT INTO products SELECT * FROM jsonb_populate_record(null::products, v_row)
-        ON CONFLICT (id) DO UPDATE SET
-          category_id = EXCLUDED.category_id,
-          name = EXCLUDED.name,
-          brand = EXCLUDED.brand,
-          notes = EXCLUDED.notes,
-          is_active = EXCLUDED.is_active,
-          updated_at = EXCLUDED.updated_at,
-          deleted_at = EXCLUDED.deleted_at,
-          device_id = EXCLUDED.device_id
-        WHERE EXCLUDED.updated_at > products.updated_at;
-      ELSIF p_table = 'variants' THEN
-        INSERT INTO variants SELECT * FROM jsonb_populate_record(null::variants, v_row)
-        ON CONFLICT (id) DO UPDATE SET
-          product_id = EXCLUDED.product_id,
-          name = EXCLUDED.name,
-          sku = EXCLUDED.sku,
-          barcode = EXCLUDED.barcode,
-          cost_price = EXCLUDED.cost_price,
-          sale_price = EXCLUDED.sale_price,
-          low_stock_threshold = EXCLUDED.low_stock_threshold,
-          track_stock = EXCLUDED.track_stock,
-          is_active = EXCLUDED.is_active,
-          updated_at = EXCLUDED.updated_at,
-          deleted_at = EXCLUDED.deleted_at,
-          device_id = EXCLUDED.device_id
-        WHERE EXCLUDED.updated_at > variants.updated_at;
-      ELSIF p_table = 'expenses' THEN
-        INSERT INTO expenses SELECT * FROM jsonb_populate_record(null::expenses, v_row)
-        ON CONFLICT (id) DO UPDATE SET
-          expense_date = EXCLUDED.expense_date,
-          amount = EXCLUDED.amount,
-          category = EXCLUDED.category,
-          note = EXCLUDED.note,
-          updated_at = EXCLUDED.updated_at,
-          deleted_at = EXCLUDED.deleted_at,
-          device_id = EXCLUDED.device_id
-        WHERE EXCLUDED.updated_at > expenses.updated_at;
-      END IF;
-    ELSE
-      -- Ledger tables are insert-only. Prevent modifications on conflict.
-      IF p_table = 'stock_movements' THEN
-        INSERT INTO stock_movements SELECT * FROM jsonb_populate_record(null::stock_movements, v_row)
-        ON CONFLICT (id) DO NOTHING;
-      ELSIF p_table = 'sales' THEN
-        INSERT INTO sales SELECT * FROM jsonb_populate_record(null::sales, v_row)
-        ON CONFLICT (id) DO NOTHING;
-      ELSIF p_table = 'sale_items' THEN
-        INSERT INTO sale_items SELECT * FROM jsonb_populate_record(null::sale_items, v_row)
-        ON CONFLICT (id) DO NOTHING;
-      ELSIF p_table = 'returns' THEN
-        INSERT INTO returns SELECT * FROM jsonb_populate_record(null::returns, v_row)
-        ON CONFLICT (id) DO NOTHING;
-      ELSIF p_table = 'return_items' THEN
-        INSERT INTO return_items SELECT * FROM jsonb_populate_record(null::return_items, v_row)
-        ON CONFLICT (id) DO NOTHING;
-      END IF;
-    END IF;
-
-    v_applied_count := v_applied_count + 1;
+  FOREACH t IN ARRAY ARRAY['shops','devices','categories','products','variants','stock_movements','sales','sale_items','returns','return_items','expenses'] LOOP
+    EXECUTE format('ALTER TABLE public.%I ADD UNIQUE(shop_id, id)', t);
+    EXECUTE format('ALTER TABLE public.%I ADD CHECK (substring(id::text, 15, 1) = ''7'')', t);
   END LOOP;
+END $$;
+CREATE UNIQUE INDEX idx_devices_code_unique ON public.devices(shop_id, code);
+ALTER TABLE public.products ADD FOREIGN KEY(shop_id, category_id) REFERENCES public.categories(shop_id, id);
+ALTER TABLE public.variants ADD FOREIGN KEY(shop_id, product_id) REFERENCES public.products(shop_id, id);
+ALTER TABLE public.stock_movements ADD FOREIGN KEY(shop_id, variant_id) REFERENCES public.variants(shop_id, id);
+ALTER TABLE public.sale_items ADD FOREIGN KEY(shop_id, sale_id) REFERENCES public.sales(shop_id, id);
+ALTER TABLE public.sale_items ADD FOREIGN KEY(shop_id, variant_id) REFERENCES public.variants(shop_id, id);
+ALTER TABLE public.returns ADD FOREIGN KEY(shop_id, sale_id) REFERENCES public.sales(shop_id, id);
+ALTER TABLE public.return_items ADD FOREIGN KEY(shop_id, return_id) REFERENCES public.returns(shop_id, id);
+ALTER TABLE public.return_items ADD FOREIGN KEY(shop_id, sale_item_id) REFERENCES public.sale_items(shop_id, id);
+ALTER TABLE public.return_items ADD FOREIGN KEY(shop_id, variant_id) REFERENCES public.variants(shop_id, id);
+ALTER TABLE public.variants ADD CHECK(cost_price >= 0 AND sale_price >= 0);
+ALTER TABLE public.sale_items ADD CHECK(qty > 0 AND unit_price >= 0 AND unit_cost >= 0 AND list_price >= 0);
+ALTER TABLE public.return_items ADD CHECK(qty > 0 AND unit_cost >= 0);
+ALTER TABLE public.sales ADD CHECK(subtotal >= 0 AND discount_amount BETWEEN 0 AND subtotal AND total = subtotal - discount_amount);
+ALTER TABLE public.expenses ADD CHECK(amount > 0);
 
-  RETURN v_applied_count;
-END;
-$$;
-
--- 3. sync_pull(p_table TEXT, p_shop_id UUID, p_cursor_updated_at TIMESTAMPTZ, p_cursor_id UUID, p_limit INTEGER DEFAULT 500)
-CREATE OR REPLACE FUNCTION sync_pull(
-  p_table TEXT,
-  p_shop_id UUID,
-  p_cursor_updated_at TIMESTAMPTZ,
-  p_cursor_id UUID,
-  p_limit INTEGER DEFAULT 500
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $$
-DECLARE
-  v_user_id UUID;
-  v_is_member BOOLEAN;
-  v_result JSONB;
-  v_sql TEXT;
+CREATE SCHEMA IF NOT EXISTS private;
+REVOKE ALL ON SCHEMA private FROM PUBLIC, anon, authenticated;
+CREATE FUNCTION private.prevent_ledger_change() RETURNS trigger LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
-  v_user_id := auth.uid();
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
+  RAISE EXCEPTION 'Ledger rows are immutable';
+END $$;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['shops','devices','categories','products','variants','stock_movements','sales','sale_items','returns','return_items','expenses'] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('CREATE POLICY member_read ON public.%I FOR SELECT TO authenticated USING (shop_id IN (SELECT shop_id FROM public.shop_members WHERE user_id = (SELECT auth.uid())))', t);
+    EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC, anon, authenticated', t);
+    EXECUTE format('GRANT SELECT ON public.%I TO authenticated', t);
+  END LOOP;
+  FOREACH t IN ARRAY ARRAY['stock_movements','sales','sale_items','returns','return_items'] LOOP
+    EXECUTE format('CREATE TRIGGER immutable_ledger BEFORE UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION private.prevent_ledger_change()', t);
+  END LOOP;
+END $$;
+ALTER TABLE public.shop_members ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_membership_read ON public.shop_members FOR SELECT TO authenticated USING (user_id = (SELECT auth.uid()));
+REVOKE ALL ON public.shop_members FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.shop_members TO authenticated;
+CREATE VIEW public.v_stock_on_hand WITH (security_invoker = true) AS
+SELECT shop_id, variant_id, SUM(qty_change) AS on_hand FROM public.stock_movements GROUP BY shop_id, variant_id;
+REVOKE ALL ON public.v_stock_on_hand FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.v_stock_on_hand TO authenticated;
+
+-- Reserving an absent shop and membership is one serialized transaction.
+-- The placeholder timestamp predates valid device data so the first push wins.
+CREATE FUNCTION public.claim_shop(p_shop_id uuid) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE u uuid := auth.uid();
+BEGIN
+  IF u IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF p_shop_id IS NULL OR substring(p_shop_id::text,15,1) <> '7' THEN RAISE EXCEPTION 'Invalid shop ID'; END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_shop_id::text, 0));
+  IF EXISTS (SELECT 1 FROM public.shops WHERE id = p_shop_id) THEN
+    RETURN EXISTS (SELECT 1 FROM public.shop_members WHERE shop_id = p_shop_id AND user_id = u);
   END IF;
+  INSERT INTO public.shops(id, shop_id, name, created_at, updated_at, device_id)
+  VALUES(p_shop_id, p_shop_id, 'Shop', '0001-01-01T00:00:00Z', '0001-01-01T00:00:00Z', p_shop_id);
+  INSERT INTO public.shop_members(shop_id, user_id, role) VALUES(p_shop_id, u, 'owner');
+  RETURN true;
+END $$;
 
-  IF p_table NOT IN ('shops', 'devices', 'categories', 'products', 'variants', 'stock_movements', 'sales', 'sale_items', 'returns', 'return_items', 'expenses') THEN
-    RAISE EXCEPTION 'Invalid table name: %', p_table;
+CREATE FUNCTION public.sync_push(p_table text, p_rows jsonb) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE
+  u uuid := auth.uid(); row_data jsonb; shop uuid; row_id uuid; existing_shop uuid;
+  mutable boolean; assignments text; accepted integer := 0;
+BEGIN
+  IF u IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF p_table IS NULL OR p_table NOT IN ('shops','devices','categories','products','variants','stock_movements','sales','sale_items','returns','return_items','expenses') THEN
+    RAISE EXCEPTION 'Invalid table';
   END IF;
-
-  -- Verify user is a member of the shop
-  SELECT EXISTS (
-    SELECT 1 FROM shop_members WHERE shop_id = p_shop_id AND user_id = v_user_id
-  ) INTO v_is_member;
-
-  IF NOT v_is_member THEN
-    RAISE EXCEPTION 'Access denied: user is not a member of shop %', p_shop_id;
-  END IF;
-
+  IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' THEN RAISE EXCEPTION 'Rows must be an array'; END IF;
+  IF jsonb_array_length(p_rows) > 200 THEN RAISE EXCEPTION 'Maximum 200 rows'; END IF;
+  mutable := p_table IN ('shops','devices','categories','products','variants','expenses');
+  -- Identifiers come only from the allowlisted relation's catalog, never JSON keys.
+  SELECT string_agg(format('%I = EXCLUDED.%I', a.attname, a.attname), ', ' ORDER BY a.attnum)
+  INTO assignments FROM pg_catalog.pg_attribute a
+  WHERE a.attrelid = format('public.%I', p_table)::regclass AND a.attnum > 0 AND NOT a.attisdropped
+    AND a.attname NOT IN ('id','shop_id','created_at','device_id','server_updated_at');
   IF p_table = 'shops' THEN
-    v_sql := format(
-      'SELECT coalesce(jsonb_agg(to_jsonb(t)), ''[]'::jsonb) FROM (SELECT * FROM %I WHERE id = %L AND (server_updated_at, id) > (%L, %L) ORDER BY server_updated_at, id LIMIT %s) t',
-      p_table, p_shop_id, p_cursor_updated_at, p_cursor_id, p_limit
-    );
-  ELSE
-    v_sql := format(
-      'SELECT coalesce(jsonb_agg(to_jsonb(t)), ''[]'::jsonb) FROM (SELECT * FROM %I WHERE shop_id = %L AND (server_updated_at, id) > (%L, %L) ORDER BY server_updated_at, id LIMIT %s) t',
-      p_table, p_shop_id, p_cursor_updated_at, p_cursor_id, p_limit
-    );
+    assignments := assignments || ', created_at = CASE WHEN stored.updated_at = ''0001-01-01T00:00:00Z''::timestamptz THEN EXCLUDED.created_at ELSE stored.created_at END, device_id = CASE WHEN stored.updated_at = ''0001-01-01T00:00:00Z''::timestamptz THEN EXCLUDED.device_id ELSE stored.device_id END';
   END IF;
+  FOR row_data IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+    IF jsonb_typeof(row_data) <> 'object' THEN RAISE EXCEPTION 'Row must be an object'; END IF;
+    row_id := (row_data->>'id')::uuid;
+    shop := (row_data->>'shop_id')::uuid;
+    IF row_id IS NULL OR shop IS NULL OR NOT EXISTS (SELECT 1 FROM public.shop_members WHERE shop_id = shop AND user_id = u) THEN
+      RAISE EXCEPTION 'Access denied';
+    END IF;
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_table || row_id::text, 1));
+    EXECUTE format('SELECT shop_id FROM public.%I WHERE id = $1 FOR UPDATE', p_table) INTO existing_shop USING row_id;
+    IF existing_shop IS NOT NULL AND existing_shop <> shop THEN RAISE EXCEPTION 'Row belongs to another shop'; END IF;
+    IF mutable THEN
+      EXECUTE format('INSERT INTO public.%1$I AS stored SELECT * FROM jsonb_populate_record(NULL::public.%1$I, $1)
+        ON CONFLICT (id) DO UPDATE SET %2$s WHERE stored.shop_id = EXCLUDED.shop_id AND EXCLUDED.updated_at > stored.updated_at', p_table, assignments)
+        USING row_data;
+    ELSE
+      EXECUTE format('INSERT INTO public.%1$I SELECT * FROM jsonb_populate_record(NULL::public.%1$I, $1) ON CONFLICT (id) DO NOTHING', p_table)
+        USING row_data;
+    END IF;
+    -- A stale mutable row or duplicate ledger row is successfully acknowledged.
+    accepted := accepted + 1;
+  END LOOP;
+  RETURN accepted;
+END $$;
 
-  EXECUTE v_sql INTO v_result;
-  RETURN v_result;
-END;
-$$;
+CREATE FUNCTION public.sync_pull(p_table text, p_shop_id uuid, p_cursor_updated_at timestamptz, p_cursor_id uuid, p_limit integer DEFAULT 500)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE result jsonb; u uuid := auth.uid();
+BEGIN
+  IF u IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+  IF p_table IS NULL OR p_table NOT IN ('shops','devices','categories','products','variants','stock_movements','sales','sale_items','returns','return_items','expenses') THEN RAISE EXCEPTION 'Invalid table'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.shop_members WHERE shop_id = p_shop_id AND user_id = u) THEN RAISE EXCEPTION 'Access denied'; END IF;
+  IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Limit must be 1 to 500'; END IF;
+  IF (p_cursor_updated_at IS NULL) <> (p_cursor_id IS NULL) THEN RAISE EXCEPTION 'Both cursor fields are required'; END IF;
+  EXECUTE format('SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.server_updated_at, t.id), ''[]''::jsonb)
+    FROM (SELECT * FROM public.%I WHERE shop_id = $1 AND ($2 IS NULL OR (server_updated_at, id) > ($2, $3)) ORDER BY server_updated_at, id LIMIT $4) t', p_table)
+    INTO result USING p_shop_id, p_cursor_updated_at, p_cursor_id, p_limit;
+  RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION public.claim_shop(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.sync_push(text, jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.sync_pull(text, uuid, timestamptz, uuid, integer) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.set_server_updated_at() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.prevent_ledger_change() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_shop(uuid), public.sync_push(text, jsonb), public.sync_pull(text, uuid, timestamptz, uuid, integer) TO authenticated;

@@ -1,10 +1,20 @@
+import { readRows } from '../query.js';
+import {
+  SaleSchema,
+  IdSchema,
+  TimestampSchema,
+  SaleItemSchema,
+  Return,
+  ReturnItem,
+  ProcessReturnInput,
+  ProcessReturnInputSchema,
+} from '../types/schemas.js';
+import { addMoney, calcRefundAmount } from '../money.js';
+import { DbAdapter } from '../db-adapter.js';
 /**
  * Return repository and processReturn atomic batch.
- * Phase 1 correction: strict return integrity checks, duplicate aggregation, tenant/sale verification.
+ * Phase 1 correction: strict return integrity checks, duplicate rejection, tenant/sale verification.
  */
-import { DbAdapter } from '../db-adapter.js';
-import { Return, ReturnItem, ProcessReturnInput, ProcessReturnInputSchema } from '../types/schemas.js';
-import { calcRefundAmount } from '../money.js';
 
 export class ReturnRepo {
   constructor(private db: DbAdapter) {}
@@ -14,18 +24,34 @@ export class ReturnRepo {
     returnId: string,
     returnItemIds: string[],
     movementIds: string[],
-    nowIso: string
+    nowIso: string,
   ): Promise<{ ret: Return; items: ReturnItem[] }> {
     const validatedInput = ProcessReturnInputSchema.parse(input);
+    TimestampSchema.parse(nowIso);
+    const ids = [returnId, ...returnItemIds, ...movementIds];
+    ids.forEach((id) => IdSchema.parse(id));
+    if (new Set(ids).size !== ids.length) throw new Error('Duplicate record IDs');
 
-    if (validatedInput.lines.length !== returnItemIds.length || validatedInput.lines.length !== movementIds.length) {
+    if (
+      validatedInput.lines.length !== returnItemIds.length ||
+      validatedInput.lines.length !== movementIds.length
+    ) {
       throw new Error('Inconsistent ID array lengths for return processing');
     }
 
+    if (
+      new Set(validatedInput.lines.map((line) => line.sale_item_id)).size !==
+      validatedInput.lines.length
+    ) {
+      throw new Error('Select each sale item only once per return');
+    }
+
     // 1. Verify sale exists and belongs to shop
-    const sales = await this.db.query<{ id: string; shop_id: string }>(
-      `SELECT id, shop_id FROM sales WHERE id = ? AND deleted_at IS NULL`,
-      [validatedInput.sale_id]
+    const sales = await readRows(
+      this.db,
+      SaleSchema,
+      `SELECT * FROM sales WHERE id = ? AND deleted_at IS NULL`,
+      [validatedInput.sale_id],
     );
     const sale = sales[0];
     if (!sale) {
@@ -42,14 +68,24 @@ export class ReturnRepo {
     }
 
     // 3. Validate each sale item and already-returned quantities
-    const saleItemMap: Record<string, { id: string; variant_id: string; qty: number; net_total: number; unit_cost: number; shop_id: string }> = {};
+    const saleItemMap: Record<
+      string,
+      {
+        id: string;
+        variant_id: string;
+        qty: number;
+        net_total: number;
+        unit_cost: number;
+        shop_id: string;
+      }
+    > = {};
 
     for (const saleItemId of Object.keys(requestedQtys)) {
       const items = await this.db.query<Record<string, unknown>>(
         `SELECT * FROM sale_items WHERE id = ? AND sale_id = ? AND deleted_at IS NULL`,
-        [saleItemId, validatedInput.sale_id]
+        [saleItemId, validatedInput.sale_id],
       );
-      const si = items[0];
+      const si = items[0] ? SaleItemSchema.parse(items[0]) : undefined;
       if (!si) {
         throw new Error(`Sale item ${saleItemId} not found in sale ${validatedInput.sale_id}`);
       }
@@ -72,14 +108,14 @@ export class ReturnRepo {
          FROM return_items ri
          JOIN returns r ON r.id = ri.return_id
          WHERE ri.sale_item_id = ? AND r.deleted_at IS NULL AND ri.deleted_at IS NULL`,
-        [saleItemId]
+        [saleItemId],
       );
       const alreadyReturned = Number(returnedStats[0]?.['total_returned'] || 0);
       const requested = requestedQtys[saleItemId]!;
 
       if (alreadyReturned + requested > Number(si['qty'])) {
         throw new Error(
-          `Cannot return ${requested} units for sale item ${saleItemId}: sold ${si['qty']}, already returned ${alreadyReturned}`
+          `Cannot return ${requested} units for sale item ${saleItemId}: sold ${si['qty']}, already returned ${alreadyReturned}`,
         );
       }
     }
@@ -100,7 +136,7 @@ export class ReturnRepo {
 
       // SPEC §8.5 refund_amount per line = round(net_total x qty_returned / qty_sold)
       const refundAmount = calcRefundAmount(si.net_total, line.qty, si.qty);
-      totalRefund += refundAmount;
+      totalRefund = addMoney(totalRefund, refundAmount);
 
       const retItem: ReturnItem = {
         id: returnItemId,
@@ -196,6 +232,34 @@ export class ReturnRepo {
         ret.device_id,
       ],
     });
+
+    // Guard reads run INSIDE the write transaction. Concurrent callers cannot both
+    // consume the same remaining quantity, even through separate repo instances.
+    const guards = validatedInput.lines.map((line) => ({
+      sql: `INSERT INTO _operation_guards (id, valid)
+        SELECT ?, CASE WHEN EXISTS (
+          SELECT 1 FROM sale_items si JOIN sales s ON s.id = si.sale_id
+          WHERE si.id = ? AND si.sale_id = ? AND si.shop_id = ?
+            AND s.shop_id = si.shop_id AND si.variant_id = ?
+            AND si.deleted_at IS NULL AND s.deleted_at IS NULL
+            AND si.qty >= ? + COALESCE((SELECT SUM(qty) FROM return_items WHERE sale_item_id = si.id), 0)
+        ) THEN 1 ELSE 0 END`,
+      params: [
+        line.sale_item_id,
+        line.sale_item_id,
+        validatedInput.sale_id,
+        validatedInput.shop_id,
+        line.variant_id,
+        line.qty,
+      ],
+    }));
+    statements.unshift(...guards);
+    statements.push(
+      ...validatedInput.lines.map((line) => ({
+        sql: 'DELETE FROM _operation_guards WHERE id = ?',
+        params: [line.sale_item_id],
+      })),
+    );
 
     // Execute in exactly ONE atomic batch
     await this.db.batch(statements);

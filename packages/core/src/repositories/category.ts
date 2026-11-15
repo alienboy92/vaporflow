@@ -1,23 +1,30 @@
+import { TimestampSchema, IdSchema, Category, CategorySchema } from '../types/schemas.js';
+import { readRows } from '../query.js';
+import { DbAdapter } from '../db-adapter.js';
 /**
  * Category repository.
  */
-import { DbAdapter } from '../db-adapter.js';
-import { Category, CategorySchema } from '../types/schemas.js';
 
 export class CategoryRepo {
   constructor(private db: DbAdapter) {}
 
   async getAll(shopId: string): Promise<Category[]> {
-    return this.db.query<Category>(
+    IdSchema.parse(shopId);
+    return readRows(
+      this.db,
+      CategorySchema,
       `SELECT * FROM categories WHERE shop_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, name ASC`,
-      [shopId]
+      [shopId],
     );
   }
 
   async getById(id: string): Promise<Category | undefined> {
-    const rows = await this.db.query<Category>(
+    IdSchema.parse(id);
+    const rows = await readRows(
+      this.db,
+      CategorySchema,
       `SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL`,
-      [id]
+      [id],
     );
     return rows[0];
   }
@@ -45,14 +52,16 @@ export class CategoryRepo {
         validated.device_id,
         validated.dirty,
         validated.server_updated_at,
-      ]
+      ],
     );
   }
 
   async softDelete(id: string, updatedAt: string): Promise<void> {
+    IdSchema.parse(id);
+    TimestampSchema.parse(updatedAt);
     await this.db.query(
       `UPDATE categories SET deleted_at = ?, updated_at = ?, dirty = 1 WHERE id = ?`,
-      [updatedAt, updatedAt, id]
+      [updatedAt, updatedAt, id],
     );
   }
 }

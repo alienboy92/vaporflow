@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
+    "@types/better-sqlite3": "9.6.0",
+    "better-sqlite3": "12.11.1",
     "typescript": "^5.6.0"
   },
   "dependencies": {
