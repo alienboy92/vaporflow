@@ -47,22 +47,26 @@ export const VfBackupSchema = z.object({
 
 export type VfBackup = z.infer<typeof VfBackupSchema>;
 
-export async function exportBackupJson(db: DbAdapter, shopId: string): Promise<string> {
+export async function exportBackupJson(
+  db: DbAdapter,
+  shopId: string,
+  appVersion = '1.0.0',
+): Promise<string> {
   const shopRows = await db.query<Shop>('SELECT * FROM shops WHERE id = ?', [shopId]);
-  const deviceRows = await db.query<Device>('SELECT * FROM devices');
-  const categoryRows = await db.query<Category>('SELECT * FROM categories');
-  const productRows = await db.query<Product>('SELECT * FROM products');
-  const variantRows = await db.query<Variant>('SELECT * FROM variants');
-  const expenseRows = await db.query<Expense>('SELECT * FROM expenses');
-  const stockMovementRows = await db.query<StockMovement>('SELECT * FROM stock_movements');
-  const saleRows = await db.query<Sale>('SELECT * FROM sales');
-  const saleItemRows = await db.query<SaleItem>('SELECT * FROM sale_items');
-  const returnRows = await db.query<Return>('SELECT * FROM returns');
-  const returnItemRows = await db.query<ReturnItem>('SELECT * FROM return_items');
+  const deviceRows = await db.query<Device>('SELECT * FROM devices WHERE shop_id = ?', [shopId]);
+  const categoryRows = await db.query<Category>('SELECT * FROM categories WHERE shop_id = ?', [shopId]);
+  const productRows = await db.query<Product>('SELECT * FROM products WHERE shop_id = ?', [shopId]);
+  const variantRows = await db.query<Variant>('SELECT * FROM variants WHERE shop_id = ?', [shopId]);
+  const expenseRows = await db.query<Expense>('SELECT * FROM expenses WHERE shop_id = ?', [shopId]);
+  const stockMovementRows = await db.query<StockMovement>('SELECT * FROM stock_movements WHERE shop_id = ?', [shopId]);
+  const saleRows = await db.query<Sale>('SELECT * FROM sales WHERE shop_id = ?', [shopId]);
+  const saleItemRows = await db.query<SaleItem>('SELECT * FROM sale_items WHERE shop_id = ?', [shopId]);
+  const returnRows = await db.query<Return>('SELECT * FROM returns WHERE shop_id = ?', [shopId]);
+  const returnItemRows = await db.query<ReturnItem>('SELECT * FROM return_items WHERE shop_id = ?', [shopId]);
 
   const backup: VfBackup = {
     format_version: 1,
-    app_version: '1.0.0',
+    app_version: appVersion,
     exported_at: new Date().toISOString(),
     shop_id: shopId,
     tables: {
@@ -93,21 +97,111 @@ export function validateBackupJson(jsonString: string): { success: boolean; data
     }
 
     const backup = result.data;
-    const saleIds = new Set(backup.tables.sales.map((s) => s.id));
-    const variantIds = new Set(backup.tables.variants.map((v) => v.id));
 
-    for (const item of backup.tables.sale_items) {
-      if (!saleIds.has(item.sale_id)) {
-        return { success: false, error: `Referential integrity error: sale_item references missing sale_id ${item.sale_id}` };
-      }
-      if (!variantIds.has(item.variant_id)) {
-        return { success: false, error: `Referential integrity error: sale_item references missing variant_id ${item.variant_id}` };
+    // Referential integrity: every child row must point at a parent present in
+    // the same backup. A truncated or hand-edited file must be rejected before
+    // any data is touched.
+    const shopIds = new Set(backup.tables.shops.map((s) => s.id));
+    const deviceIds = new Set(backup.tables.devices.map((d) => d.id));
+    const categoryIds = new Set(backup.tables.categories.map((c) => c.id));
+    const productIds = new Set(backup.tables.products.map((p) => p.id));
+    const variantIds = new Set(backup.tables.variants.map((v) => v.id));
+    const saleIds = new Set(backup.tables.sales.map((s) => s.id));
+    const saleItemIds = new Set(backup.tables.sale_items.map((si) => si.id));
+    const returnIds = new Set(backup.tables.returns.map((r) => r.id));
+
+    const refError = (message: string) =>
+      ({ success: false as const, error: `Referential integrity error: ${message}` });
+
+    if (!shopIds.has(backup.shop_id)) {
+      return refError(`backup.shop_id ${backup.shop_id} is missing from tables.shops`);
+    }
+
+    // Duplicate primary keys would fail mid-batch and abort the restore.
+    const idChecks: [string, Set<string>][] = [
+      ['shops', shopIds],
+      ['devices', deviceIds],
+      ['categories', categoryIds],
+      ['products', productIds],
+      ['variants', variantIds],
+      ['expenses', new Set(backup.tables.expenses.map((e) => e.id))],
+      ['stock_movements', new Set(backup.tables.stock_movements.map((m) => m.id))],
+      ['sales', saleIds],
+      ['sale_items', saleItemIds],
+      ['returns', returnIds],
+      ['return_items', new Set(backup.tables.return_items.map((ri) => ri.id))],
+    ];
+    const tableLengths: Record<string, number> = {
+      shops: backup.tables.shops.length,
+      devices: backup.tables.devices.length,
+      categories: backup.tables.categories.length,
+      products: backup.tables.products.length,
+      variants: backup.tables.variants.length,
+      expenses: backup.tables.expenses.length,
+      stock_movements: backup.tables.stock_movements.length,
+      sales: backup.tables.sales.length,
+      sale_items: backup.tables.sale_items.length,
+      returns: backup.tables.returns.length,
+      return_items: backup.tables.return_items.length,
+    };
+    for (const [table, ids] of idChecks) {
+      if (ids.size !== tableLengths[table]) {
+        return { success: false, error: `Duplicate record IDs in tables.${table}` };
       }
     }
 
+    for (const device of backup.tables.devices) {
+      if (!shopIds.has(device.shop_id)) return refError(`device ${device.id} references missing shop`);
+    }
+    for (const category of backup.tables.categories) {
+      if (category.shop_id !== backup.shop_id) return refError(`category ${category.id} has a foreign shop_id`);
+    }
+    for (const product of backup.tables.products) {
+      if (product.shop_id !== backup.shop_id) return refError(`product ${product.id} has a foreign shop_id`);
+      if (product.category_id && !categoryIds.has(product.category_id)) {
+        return refError(`product ${product.id} references missing category`);
+      }
+    }
+    for (const variant of backup.tables.variants) {
+      if (variant.shop_id !== backup.shop_id) return refError(`variant ${variant.id} has a foreign shop_id`);
+      if (!productIds.has(variant.product_id)) {
+        return refError(`variant ${variant.id} references missing product`);
+      }
+    }
+    for (const expense of backup.tables.expenses) {
+      if (expense.shop_id !== backup.shop_id) return refError(`expense ${expense.id} has a foreign shop_id`);
+    }
+    for (const movement of backup.tables.stock_movements) {
+      if (movement.shop_id !== backup.shop_id) return refError(`stock_movement ${movement.id} has a foreign shop_id`);
+      if (!variantIds.has(movement.variant_id)) {
+        return refError(`stock_movement ${movement.id} references missing variant`);
+      }
+    }
+    for (const sale of backup.tables.sales) {
+      if (sale.shop_id !== backup.shop_id) return refError(`sale ${sale.id} has a foreign shop_id`);
+    }
+    for (const item of backup.tables.sale_items) {
+      if (!saleIds.has(item.sale_id)) {
+        return refError(`sale_item ${item.id} references missing sale`);
+      }
+      if (!variantIds.has(item.variant_id)) {
+        return refError(`sale_item ${item.id} references missing variant`);
+      }
+    }
     for (const ret of backup.tables.returns) {
       if (!saleIds.has(ret.sale_id)) {
-        return { success: false, error: `Referential integrity error: return references missing sale_id ${ret.sale_id}` };
+        return refError(`return ${ret.id} references missing sale`);
+      }
+    }
+    for (const retItem of backup.tables.return_items) {
+      if (!returnIds.has(retItem.return_id)) {
+        return refError(`return_item ${retItem.id} references missing return`);
+      }
+      if (!saleItemIds.has(retItem.sale_item_id)) {
+        return refError(`return_item ${retItem.id} references missing sale_item`);
+      }
+      if (!variantIds.has(retItem.variant_id)) {
+        return refError(`return_item ${retItem.id} references missing variant`);
       }
     }
 
@@ -251,34 +345,31 @@ export async function restoreBackup(db: DbAdapter, backup: VfBackup): Promise<vo
 
   await db.batch(statements);
 
+  // Receipt counter recovery. The counter stores the LAST-USED number (the
+  // next sale uses value + 1, per the Phase 5 convention), so it must equal
+  // the highest restored receipt number: writing max + 1 would permanently
+  // skip a number, while writing max never reuses one. The counter is a
+  // single global key, so recover from the max across ALL restored receipts
+  // (any device prefix) — otherwise a clean-install restore would leave the
+  // counter at 0 and the next sale would collide with
+  // idx_sales_receipt_no_unique and fail.
   try {
-    const activeDeviceCodeRes = await db.query<{ value: string }>(
-      "SELECT value FROM settings WHERE key = 'active_device_code'"
-    );
-    const deviceCode = activeDeviceCodeRes[0]?.value;
-    if (deviceCode) {
-      const salesRes = await db.query<{ receipt_no: string }>(
-        "SELECT receipt_no FROM sales WHERE receipt_no LIKE ?",
-        [`${deviceCode}-%`]
-      );
-      let maxCounter = 0;
-      for (const s of salesRes) {
-        const parts = s.receipt_no.split('-');
-        const numStr = parts[parts.length - 1];
-        if (numStr) {
-          const num = parseInt(numStr, 10);
-          if (!isNaN(num) && num > maxCounter) {
-            maxCounter = num;
-          }
-        }
-      }
-      const nextCounter = maxCounter + 1;
-      await db.query(
-        "INSERT INTO settings(key, value) VALUES('receipt_counter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        [String(nextCounter)]
-      );
+    const salesRes = await db.query<{ receipt_no: string }>('SELECT receipt_no FROM sales');
+    let maxCounter = 0;
+    for (const s of salesRes) {
+      const parts = s.receipt_no.split('-');
+      const num = parseInt(parts[parts.length - 1] ?? '', 10);
+      if (!isNaN(num) && num > maxCounter) maxCounter = num;
     }
-  } catch {
-    // Non-fatal if settings table or counter recovery fails
+    await db.query(
+      "INSERT INTO settings(key, value) VALUES('receipt_counter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      [String(maxCounter)],
+    );
+  } catch (err) {
+    // Non-fatal (the counter keeps its previous value), but never silent:
+    // surface it so a failed recovery is diagnosable.
+    throw new Error(
+      `Backup restored, but receipt-counter recovery failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+    );
   }
 }

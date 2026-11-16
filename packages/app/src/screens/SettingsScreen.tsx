@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useDb } from '../context/DbProvider';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useDb, usePlatform } from '../context/DbProvider';
 import { ShopRepo, DeviceRepo, SettingsRepo, updatePin, exportBackupJson, validateBackupJson, restoreBackup } from '@vaporflow/core';
 import type { Shop, Device, VfBackup } from '@vaporflow/core';
 import { resizeLogo } from '../utils/logo';
@@ -8,6 +8,7 @@ import { DbCheck } from './DbCheck';
 
 export function SettingsScreen() {
   const db = useDb();
+  const platform = usePlatform();
   const [shop, setShop] = useState<Shop | null>(null);
   const [device, setDevice] = useState<Device | null>(null);
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -29,6 +30,9 @@ export function SettingsScreen() {
   const [pendingBackupData, setPendingBackupData] = useState<VfBackup | null>(null);
   const [backupError, setBackupError] = useState('');
   const [backupSuccess, setBackupSuccess] = useState('');
+  const [restoring, setRestoring] = useState(false);
+  // Synchronous double-submit guard (same-tick double-click).
+  const restoringRef = useRef(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -405,13 +409,14 @@ export function SettingsScreen() {
               setBackupSuccess('');
               try {
                 const jsonStr = await exportBackupJson(db, shop.id);
-                const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `vaporflow_backup_${new Date().toISOString().slice(0, 10)}.vfbackup`;
-                a.click();
-                URL.revokeObjectURL(url);
+                // Hand the file to the platform adapter: desktop saves via a
+                // blob download, Android writes to cache and opens the share
+                // sheet (a bare <a download> does not work in the webview).
+                await platform.share.shareFile(
+                  `vaporflow_backup_${new Date().toISOString().slice(0, 10)}.vfbackup`,
+                  jsonStr,
+                  'application/json',
+                );
                 setBackupSuccess('Backup exported successfully.');
               } catch (err) {
                 globalErrorLogger.log(err);
@@ -482,8 +487,11 @@ export function SettingsScreen() {
                 Cancel
               </button>
               <button
+                disabled={restoring}
                 onClick={async () => {
-                  if (!pendingBackupData) return;
+                  if (!pendingBackupData || restoringRef.current) return;
+                  restoringRef.current = true;
+                  setRestoring(true);
                   try {
                     await restoreBackup(db, pendingBackupData);
                     setRestoreModalOpen(false);
@@ -496,11 +504,14 @@ export function SettingsScreen() {
                     globalErrorLogger.log(err);
                     setBackupError(err instanceof Error ? err.message : 'Restore failed');
                     setRestoreModalOpen(false);
+                  } finally {
+                    restoringRef.current = false;
+                    setRestoring(false);
                   }
                 }}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg min-h-11 font-medium shadow"
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
               >
-                Confirm Restore
+                {restoring ? 'Restoring...' : 'Confirm Restore'}
               </button>
             </div>
           </div>

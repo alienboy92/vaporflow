@@ -30,14 +30,14 @@ export const CsvRowInputSchema = z.object({
     const s = String(val ?? '').trim();
     if (!s) return 0;
     const n = Number(s);
-    if (isNaN(n)) throw new Error('Invalid opening stock');
-    return Math.round(n);
+    if (isNaN(n) || !Number.isInteger(n) || n < 0) throw new Error('Opening stock must be a non-negative integer');
+    return n;
   }),
   low_stock_threshold: z.union([z.string(), z.number()]).optional().nullable().transform((val) => {
     const s = String(val ?? '').trim();
     if (!s) return null;
     const n = Number(s);
-    if (isNaN(n)) return null;
+    if (isNaN(n) || !Number.isInteger(n) || n < 0) throw new Error('Low stock threshold must be a non-negative integer');
     return Math.round(n);
   }),
 });
@@ -50,6 +50,8 @@ export interface ImportPreviewRow {
   errors: string[];
   isDuplicateBarcodeInFile: boolean;
   isDuplicateBarcodeInDb: boolean;
+  /** How the row matched an existing variant, when it did. */
+  matchBy?: 'barcode' | 'name';
   existingVariantId?: string;
   existingProductId?: string;
 }
@@ -99,12 +101,28 @@ export async function previewCsvImport(
   }
 
   const productRepo = new ProductRepo(db);
+  const categoryRepo = new CategoryRepo(db);
   const existingVariants = await productRepo.getVariants(shopId);
-  const barcodeToVariant = new Map<string, string>();
+  const barcodeToVariant = new Map<string, Variant>();
   for (const v of existingVariants) {
     if (v.barcode) {
-      barcodeToVariant.set(v.barcode.trim(), v.id);
+      barcodeToVariant.set(v.barcode.trim(), v);
     }
+  }
+
+  // Name-based matching needs the same grouping executeCsvImport uses, so the
+  // preview can flag exactly the rows that will be treated as existing.
+  const categoryMap = new Map<string, string>(); // lowercased name -> id
+  for (const c of await categoryRepo.getAll(shopId)) {
+    categoryMap.set(c.name.toLowerCase().trim(), c.id);
+  }
+  const productMap = new Map<string, string>(); // `${categoryId}:${lower name}` -> id
+  for (const p of await productRepo.getProducts(shopId)) {
+    productMap.set(`${p.category_id || ''}:${p.name.toLowerCase().trim()}`, p.id);
+  }
+  const productVariantMap = new Map<string, Variant>(); // `${productId}:${lower variant name}` -> variant
+  for (const v of existingVariants) {
+    productVariantMap.set(`${v.product_id}:${v.name.toLowerCase().trim()}`, v);
   }
 
   const seenBarcodesInFile = new Set<string>();
@@ -117,7 +135,9 @@ export async function previewCsvImport(
     let parsedData: CsvRowParsed;
     let isDuplicateBarcodeInFile = false;
     let isDuplicateBarcodeInDb = false;
+    let matchBy: 'barcode' | 'name' | undefined;
     let existingVariantId: string | undefined;
+    let existingProductId: string | undefined;
 
     try {
       const result = CsvRowInputSchema.safeParse(raw);
@@ -149,7 +169,32 @@ export async function previewCsvImport(
           }
           if (barcodeToVariant.has(b)) {
             isDuplicateBarcodeInDb = true;
-            existingVariantId = barcodeToVariant.get(b);
+            const matched = barcodeToVariant.get(b)!;
+            existingVariantId = matched.id;
+            existingProductId = matched.product_id;
+            matchBy = 'barcode';
+          }
+        }
+        // Name-based match (no barcode match): same category + product name +
+        // variant name. Conflicting barcodes make the match ambiguous and are
+        // surfaced as a row error instead of silently rebinding the barcode.
+        if (!existingVariantId) {
+          const catId = categoryMap.get(parsedData.category.toLowerCase().trim());
+          if (catId) {
+            const prodId = productMap.get(`${catId}:${parsedData.product_name.toLowerCase().trim()}`);
+            if (prodId) {
+              const matched = productVariantMap.get(`${prodId}:${parsedData.variant_name.toLowerCase().trim()}`);
+              if (matched) {
+                matchBy = 'name';
+                existingVariantId = matched.id;
+                existingProductId = prodId;
+                if (parsedData.barcode && matched.barcode && parsedData.barcode !== matched.barcode) {
+                  rowErrors.push(
+                    `Barcode '${parsedData.barcode}' conflicts with existing variant '${matched.name}' (barcode '${matched.barcode}'). The row matched by product/variant name; edit the CSV to resolve the ambiguity.`,
+                  );
+                }
+              }
+            }
           }
         }
       }
@@ -175,7 +220,9 @@ export async function previewCsvImport(
       errors: rowErrors,
       isDuplicateBarcodeInFile,
       isDuplicateBarcodeInDb,
+      matchBy,
       existingVariantId,
+      existingProductId,
     });
   }
 
@@ -270,15 +317,26 @@ export async function executeCsvImport(
             skippedCount++;
             continue;
           } else {
+            // A CSV barcode that differs from the matched variant's own
+            // barcode makes the match ambiguous; the preview flags it as a row
+            // error, and this guard keeps stale previews from rebinding it.
+            if (data.barcode && existingVariant.barcode && data.barcode !== existingVariant.barcode) {
+              errors.push(
+                `Row ${r.rowNumber}: barcode '${data.barcode}' conflicts with existing variant barcode '${existingVariant.barcode}'; row skipped.`,
+              );
+              continue;
+            }
             updatedCount++;
+            // Never null out identity fields the CSV row omits: keep the
+            // existing barcode/sku/threshold instead of overwriting with null.
             statements.push({
               sql: `UPDATE variants SET barcode = ?, sku = ?, cost_price = ?, sale_price = ?, low_stock_threshold = ?, updated_at = ?, device_id = ?, dirty = 1 WHERE id = ?`,
               params: [
-                data.barcode || null,
-                data.sku || null,
+                data.barcode ?? existingVariant.barcode,
+                data.sku ?? existingVariant.sku,
                 data.cost_price,
                 data.sale_price,
-                data.low_stock_threshold,
+                data.low_stock_threshold ?? existingVariant.low_stock_threshold,
                 now,
                 deviceId,
                 existingVariant.id,
@@ -351,7 +409,18 @@ export async function executeCsvImport(
     }
 
     if (statements.length > 0) {
-      await db.batch(statements);
+      try {
+        await db.batch(statements);
+      } catch (err) {
+        // Batches are atomic: nothing from this chunk was written. Record the
+        // failure and continue with later chunks; re-running the whole import
+        // is deterministic because already-written rows match as existing.
+        const first = chunk[0]?.rowNumber ?? i + 2;
+        const last = chunk[chunk.length - 1]?.rowNumber ?? i + 1 + chunk.length;
+        errors.push(
+          `Rows ${first}-${last}: chunk failed and wrote nothing (${err instanceof Error ? err.message : 'batch failed'}). Fix the reported rows and import again.`,
+        );
+      }
     }
 
     if (onProgress) {

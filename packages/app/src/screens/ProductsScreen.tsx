@@ -6,6 +6,7 @@ import {
   StockRepo,
   CategoryRepo,
   ShopRepo,
+  DeviceRepo,
   generateEAN13,
   validateBarcode,
   formatMoney,
@@ -66,6 +67,8 @@ export function ProductsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  // Current device for sync attribution (NOT the shop's creating device).
+  const [deviceId, setDeviceId] = useState<string | null>(null);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -92,6 +95,9 @@ export function ProductsScreen() {
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvProgress, setCsvProgress] = useState({ current: 0, total: 0 });
   const [csvResult, setCsvResult] = useState<ImportResult | null>(null);
+  const [csvError, setCsvError] = useState('');
+  // Synchronous double-submit guard (same-tick double-click / double-Enter).
+  const csvImportingRef = useRef(false);
 
   const barcodeInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -105,6 +111,9 @@ export function ProductsScreen() {
       const activeShop = await shopRepo.getActiveShop();
       if (!activeShop) return;
       setShop(activeShop);
+
+      const devices = await new DeviceRepo(db).getDevices(activeShop.id);
+      if (devices[0]) setDeviceId(devices[0].id);
 
       const cats = await categoryRepo.getAll(activeShop.id);
       setCategories(cats);
@@ -272,6 +281,10 @@ export function ProductsScreen() {
 
   async function handleInlineCategoryCreate() {
     if (!newCategoryName.trim() || !shop) return;
+    if (!deviceId) {
+      setError('Device is not registered yet. Open Settings to register this device.');
+      return;
+    }
     try {
       const categoryRepo = new CategoryRepo(db);
       const newCatId = uuidv7();
@@ -284,7 +297,7 @@ export function ProductsScreen() {
         created_at: now,
         updated_at: now,
         deleted_at: null,
-        device_id: shop.device_id,
+        device_id: deviceId,
         dirty: 1,
         server_updated_at: null,
       });
@@ -302,6 +315,10 @@ export function ProductsScreen() {
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
     if (!shop) return;
+    if (!deviceId) {
+      setError('Device is not registered yet. Open Settings to register this device.');
+      return;
+    }
     setError('');
     setSuccess('');
 
@@ -326,7 +343,7 @@ export function ProductsScreen() {
         created_at: editingProduct ? editingProduct.created_at : now,
         updated_at: now,
         deleted_at: null,
-        device_id: shop.device_id,
+        device_id: deviceId,
         dirty: 1,
         server_updated_at: null,
       };
@@ -359,7 +376,7 @@ export function ProductsScreen() {
           created_at: now,
           updated_at: now,
           deleted_at: null,
-          device_id: shop.device_id,
+          device_id: deviceId,
           dirty: 1,
           server_updated_at: null,
         });
@@ -378,7 +395,7 @@ export function ProductsScreen() {
         product,
         variants,
         openingStocks,
-        shop.device_id,
+        deviceId,
         now,
         removedVariantIds,
       );
@@ -442,7 +459,13 @@ export function ProductsScreen() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setCsvModalOpen(true)}
+            onClick={() => {
+              setCsvError('');
+              setCsvResult(null);
+              setCsvPreviewRows([]);
+              setCsvGlobalErrors([]);
+              setCsvModalOpen(true);
+            }}
             className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium px-5 py-2.5 rounded-lg min-h-11 border"
           >
             Import CSV
@@ -1062,6 +1085,7 @@ export function ProductsScreen() {
                       setCsvPreviewRows(res.rows);
                       setCsvGlobalErrors(res.globalErrors);
                       setCsvResult(null);
+                      setCsvError('');
                     };
                     reader.readAsText(file);
                   }}
@@ -1086,7 +1110,7 @@ export function ProductsScreen() {
                       <p className="text-xs text-gray-500">
                         Valid rows: {csvPreviewRows.filter(r => r.errors.length === 0).length} |
                         Errors: {csvPreviewRows.filter(r => r.errors.length > 0).length} |
-                        Duplicates in DB: {csvPreviewRows.filter(r => r.isDuplicateBarcodeInDb).length}
+                        Existing variants matched: {csvPreviewRows.filter(r => r.matchBy).length}
                       </p>
                     </div>
                     <div>
@@ -1131,10 +1155,15 @@ export function ProductsScreen() {
                                   <span className="text-red-600 font-semibold" title={r.errors.join(', ')}>
                                     Error ({r.errors.length})
                                   </span>
-                                ) : r.isDuplicateBarcodeInDb ? (
-                                  <span className="text-amber-600 font-semibold">Exists (will {csvPriceStrategy})</span>
+                                ) : r.matchBy ? (
+                                  <span
+                                    className="text-amber-600 font-semibold"
+                                    title={`Matches an existing variant by ${r.matchBy === 'barcode' ? 'barcode' : 'product/variant name'}; will be ${csvPriceStrategy === 'skip' ? 'skipped' : 'updated'}`}
+                                  >
+                                    Exists ({r.matchBy === 'barcode' ? 'barcode' : 'name'})
+                                  </span>
                                 ) : (
-                                  <span className="text-green-600 font-semibold">Ready</span>
+                                  <span className="text-green-600 font-semibold">New</span>
                                 )}
                               </td>
                             </tr>
@@ -1143,6 +1172,12 @@ export function ProductsScreen() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+
+              {csvError && (
+                <div role="alert" className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm">
+                  {csvError}
                 </div>
               )}
 
@@ -1184,14 +1219,20 @@ export function ProductsScreen() {
               <button
                 disabled={csvPreviewRows.filter(r => r.errors.length === 0).length === 0 || csvImporting}
                 onClick={async () => {
-                  if (!shop) return;
+                  if (!shop || csvImportingRef.current) return;
+                  if (!deviceId) {
+                    setCsvError('Device is not registered yet. Open Settings to register this device.');
+                    return;
+                  }
+                  csvImportingRef.current = true;
                   setCsvImporting(true);
                   setCsvResult(null);
+                  setCsvError('');
                   try {
                     const res = await executeCsvImport(
                       db,
                       shop.id,
-                      shop.device_id,
+                      deviceId,
                       csvPreviewRows,
                       csvPriceStrategy,
                       (prog) => setCsvProgress(prog),
@@ -1201,8 +1242,11 @@ export function ProductsScreen() {
                     void loadData();
                   } catch (err) {
                     globalErrorLogger.log(err);
-                    setError(err instanceof Error ? err.message : 'CSV Import failed');
+                    // Errors must be visible inside the open modal, not on the
+                    // page behind the overlay.
+                    setCsvError(err instanceof Error ? err.message : 'CSV Import failed');
                   } finally {
+                    csvImportingRef.current = false;
                     setCsvImporting(false);
                   }
                 }}
