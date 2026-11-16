@@ -10,8 +10,11 @@ import {
   validateBarcode,
   formatMoney,
   uuidv7,
+  generateCsvTemplate,
+  previewCsvImport,
+  executeCsvImport,
 } from '@vaporflow/core';
-import type { Product, Variant, Category, Shop } from '@vaporflow/core';
+import type { Product, Variant, Category, Shop, ImportPreviewRow, ImportResult } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
 import { printHtml } from '../utils/print';
@@ -80,6 +83,15 @@ export function ProductsScreen() {
   // Label printing: the product being labelled and its selected variant ids.
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
   const [labelSelected, setLabelSelected] = useState<string[]>([]);
+
+  // CSV Import Modal State
+  const [csvModalOpen, setCsvModalOpen] = useState(false);
+  const [csvPreviewRows, setCsvPreviewRows] = useState<ImportPreviewRow[]>([]);
+  const [csvGlobalErrors, setCsvGlobalErrors] = useState<string[]>([]);
+  const [csvPriceStrategy, setCsvPriceStrategy] = useState<'skip' | 'update'>('skip');
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvProgress, setCsvProgress] = useState({ current: 0, total: 0 });
+  const [csvResult, setCsvResult] = useState<ImportResult | null>(null);
 
   const barcodeInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -428,12 +440,20 @@ export function ProductsScreen() {
           <h1 className="text-3xl font-bold text-gray-900">Products & Catalog</h1>
           <p className="text-gray-600">Manage products, variants, pricing, and opening stock.</p>
         </div>
-        <button
-          onClick={handleOpenCreate}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
-        >
-          + Add Product
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setCsvModalOpen(true)}
+            className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium px-5 py-2.5 rounded-lg min-h-11 border"
+          >
+            Import CSV
+          </button>
+          <button
+            onClick={handleOpenCreate}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
+          >
+            + Add Product
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -985,6 +1005,212 @@ export function ProductsScreen() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CSV Import Modal */}
+      {csvModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-3xl w-full space-y-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-4">
+              <h2 className="text-2xl font-bold text-gray-900">Import Products from CSV</h2>
+              <button
+                onClick={() => setCsvModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-200">
+                <div>
+                  <h3 className="font-semibold text-blue-900">Need the CSV template?</h3>
+                  <p className="text-sm text-blue-700">Download the formatted template with required headers and example rows.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const template = generateCsvTemplate();
+                    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'vaporflow_product_template.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium min-h-11"
+                >
+                  Download Template
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select CSV File</label>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !shop) return;
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                      const text = event.target?.result as string;
+                      if (!text) return;
+                      const res = await previewCsvImport(db, shop.id, text);
+                      setCsvPreviewRows(res.rows);
+                      setCsvGlobalErrors(res.globalErrors);
+                      setCsvResult(null);
+                    };
+                    reader.readAsText(file);
+                  }}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
+              {csvGlobalErrors.length > 0 && (
+                <div className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 space-y-1">
+                  <h4 className="font-semibold">Parse Errors:</h4>
+                  {csvGlobalErrors.map((err, i) => (
+                    <p key={i} className="text-sm">{err}</p>
+                  ))}
+                </div>
+              )}
+
+              {csvPreviewRows.length > 0 && (
+                <div className="space-y-4 border-t pt-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="font-semibold text-gray-800">Preview ({csvPreviewRows.length} rows)</h3>
+                      <p className="text-xs text-gray-500">
+                        Valid rows: {csvPreviewRows.filter(r => r.errors.length === 0).length} |
+                        Errors: {csvPreviewRows.filter(r => r.errors.length > 0).length} |
+                        Duplicates in DB: {csvPreviewRows.filter(r => r.isDuplicateBarcodeInDb).length}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mr-2">Existing Barcodes Strategy:</label>
+                      <select
+                        value={csvPriceStrategy}
+                        onChange={(e) => setCsvPriceStrategy(e.target.value as 'skip' | 'update')}
+                        className="border rounded px-3 py-1.5 text-sm bg-white"
+                      >
+                        <option value="skip">Skip existing</option>
+                        <option value="update">Update prices</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto border rounded-lg">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-100 border-b">
+                        <tr>
+                          <th className="p-2">Row</th>
+                          <th className="p-2">Product</th>
+                          <th className="p-2">Variant</th>
+                          <th className="p-2">Barcode</th>
+                          <th className="p-2">Price</th>
+                          <th className="p-2">Stock</th>
+                          <th className="p-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {csvPreviewRows.map((r) => {
+                          const hasErr = r.errors.length > 0;
+                          return (
+                            <tr key={r.rowNumber} className={hasErr ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                              <td className="p-2 font-mono">{r.rowNumber}</td>
+                              <td className="p-2 font-medium">{r.data.product_name || '(empty)'}</td>
+                              <td className="p-2">{r.data.variant_name}</td>
+                              <td className="p-2 font-mono">{r.data.barcode || '—'}</td>
+                              <td className="p-2">PKR {r.data.sale_price}</td>
+                              <td className="p-2">{r.data.opening_stock}</td>
+                              <td className="p-2">
+                                {hasErr ? (
+                                  <span className="text-red-600 font-semibold" title={r.errors.join(', ')}>
+                                    Error ({r.errors.length})
+                                  </span>
+                                ) : r.isDuplicateBarcodeInDb ? (
+                                  <span className="text-amber-600 font-semibold">Exists (will {csvPriceStrategy})</span>
+                                ) : (
+                                  <span className="text-green-600 font-semibold">Ready</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {csvImporting && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Importing rows...</span>
+                    <span>{csvProgress.current} / {csvProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-200"
+                      style={{ width: `${(csvProgress.current / (csvProgress.total || 1)) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {csvResult && (
+                <div className="p-4 bg-green-50 text-green-800 rounded-lg border border-green-200 space-y-1">
+                  <h4 className="font-bold">Import Completed Successfully!</h4>
+                  <p className="text-sm">Imported new: {csvResult.importedCount}</p>
+                  <p className="text-sm">Updated existing: {csvResult.updatedCount}</p>
+                  <p className="text-sm">Skipped: {csvResult.skippedCount}</p>
+                  {csvResult.errors.length > 0 && (
+                    <p className="text-sm text-red-600">Errors encountered: {csvResult.errors.length}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button
+                onClick={() => setCsvModalOpen(false)}
+                className="px-5 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+              >
+                Close
+              </button>
+              <button
+                disabled={csvPreviewRows.filter(r => r.errors.length === 0).length === 0 || csvImporting}
+                onClick={async () => {
+                  if (!shop) return;
+                  setCsvImporting(true);
+                  setCsvResult(null);
+                  try {
+                    const res = await executeCsvImport(
+                      db,
+                      shop.id,
+                      shop.device_id,
+                      csvPreviewRows,
+                      csvPriceStrategy,
+                      (prog) => setCsvProgress(prog),
+                    );
+                    setCsvResult(res);
+                    notifyStockChanged();
+                    void loadData();
+                  } catch (err) {
+                    globalErrorLogger.log(err);
+                    setError(err instanceof Error ? err.message : 'CSV Import failed');
+                  } finally {
+                    setCsvImporting(false);
+                  }
+                }}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
+              >
+                {csvImporting ? 'Importing...' : `Import ${csvPreviewRows.filter(r => r.errors.length === 0).length} Valid Rows`}
+              </button>
+            </div>
           </div>
         </div>
       )}

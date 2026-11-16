@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useDb } from '../context/DbProvider';
-import { ShopRepo, DeviceRepo, SettingsRepo, updatePin } from '@vaporflow/core';
-import type { Shop, Device } from '@vaporflow/core';
+import { ShopRepo, DeviceRepo, SettingsRepo, updatePin, exportBackupJson, validateBackupJson, restoreBackup } from '@vaporflow/core';
+import type { Shop, Device, VfBackup } from '@vaporflow/core';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
 import { DbCheck } from './DbCheck';
@@ -23,6 +23,12 @@ export function SettingsScreen() {
   // Error log state
   const [logs, setLogs] = useState(globalErrorLogger.getLogs());
   const [copied, setCopied] = useState(false);
+
+  // Backup state
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
+  const [pendingBackupData, setPendingBackupData] = useState<VfBackup | null>(null);
+  const [backupError, setBackupError] = useState('');
+  const [backupSuccess, setBackupSuccess] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -373,6 +379,133 @@ export function SettingsScreen() {
           )}
         </div>
       </section>
+
+      <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+        <h2 className="text-xl font-semibold text-gray-800">Backup & Restore</h2>
+        <p className="text-sm text-gray-600">
+          Export a versioned .vfbackup JSON file containing all synced shop data, or restore from a previous backup. Restoring replaces local synced data.
+        </p>
+
+        {backupError && (
+          <div role="alert" className="p-3 bg-red-50 text-red-700 rounded text-sm border border-red-200">
+            {backupError}
+          </div>
+        )}
+        {backupSuccess && (
+          <div role="status" className="p-3 bg-green-50 text-green-700 rounded text-sm border border-green-200">
+            {backupSuccess}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-4 pt-2">
+          <button
+            onClick={async () => {
+              if (!shop) return;
+              setBackupError('');
+              setBackupSuccess('');
+              try {
+                const jsonStr = await exportBackupJson(db, shop.id);
+                const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `vaporflow_backup_${new Date().toISOString().slice(0, 10)}.vfbackup`;
+                a.click();
+                URL.revokeObjectURL(url);
+                setBackupSuccess('Backup exported successfully.');
+              } catch (err) {
+                globalErrorLogger.log(err);
+                setBackupError('Failed to export backup');
+              }
+            }}
+            className="rounded bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 font-medium min-h-11 shadow"
+          >
+            Export Backup (.vfbackup)
+          </button>
+
+          <div>
+            <label className="rounded border bg-white hover:bg-gray-50 text-gray-700 px-5 py-2.5 font-medium min-h-11 inline-flex items-center cursor-pointer shadow-sm">
+              <span>Restore Backup...</span>
+              <input
+                type="file"
+                accept=".vfbackup,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setBackupError('');
+                  setBackupSuccess('');
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    const content = event.target?.result as string;
+                    if (!content) return;
+                    const val = validateBackupJson(content);
+                    if (!val.success || !val.data) {
+                      setBackupError(val.error || 'Invalid backup file');
+                      return;
+                    }
+                    setPendingBackupData(val.data);
+                    setRestoreModalOpen(true);
+                  };
+                  reader.readAsText(file);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      {/* Restore Confirmation Modal */}
+      {restoreModalOpen && pendingBackupData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900">Confirm Backup Restore</h3>
+            <p className="text-sm text-gray-600">
+              You are about to restore backup from <span className="font-mono">{new Date(pendingBackupData.exported_at).toLocaleString()}</span> (App version: {pendingBackupData.app_version}).
+            </p>
+            <div className="p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200">
+              ⚠️ Warning: Restoring this backup will replace all current local synced data (products, sales, stock, expenses) with the backup contents. Local device identity and PIN are preserved.
+            </div>
+            <div className="text-xs text-gray-500 space-y-1">
+              <p>Products in backup: {pendingBackupData.tables.products.length}</p>
+              <p>Sales in backup: {pendingBackupData.tables.sales.length}</p>
+              <p>Expenses in backup: {pendingBackupData.tables.expenses.length}</p>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t">
+              <button
+                onClick={() => {
+                  setRestoreModalOpen(false);
+                  setPendingBackupData(null);
+                }}
+                className="px-4 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!pendingBackupData) return;
+                  try {
+                    await restoreBackup(db, pendingBackupData);
+                    setRestoreModalOpen(false);
+                    setPendingBackupData(null);
+                    setBackupSuccess('Backup restored successfully. Reloading...');
+                    setTimeout(() => {
+                      window.location.reload();
+                    }, 1500);
+                  } catch (err) {
+                    globalErrorLogger.log(err);
+                    setBackupError(err instanceof Error ? err.message : 'Restore failed');
+                    setRestoreModalOpen(false);
+                  }
+                }}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg min-h-11 font-medium shadow"
+              >
+                Confirm Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
         <h2 className="text-xl font-semibold text-gray-800">Development Diagnostics</h2>

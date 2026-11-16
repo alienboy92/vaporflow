@@ -20,7 +20,7 @@ Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests 
 
 | Phase                  | State                          | Next checkpoint                                                             |
 | ---------------------- | ------------------------------ | --------------------------------------------------------------------------- |
-| 7 — Import/recovery    | NOT STARTED                    | CSV preview/import, backup/restore                                          |
+| 7 — Import/recovery    | READY FOR HARDWARE CHECK       | CSV import with Papaparse & Zod, template generation, preview & error detection, duplicate barcode checks, chunked batches (200 rows), skip/update price strategies, and opening stock idempotence; settings backup export (`.vfbackup`) and validation/restore with transaction safety and counter recovery; 102 automated tests; [Phase 7 review pending]. |
 | 8A — Sync engine       | NOT STARTED                    | Transport boundary and two-device tests                                     |
 | 8B — Cloud integration | NOT STARTED                    | Deployment-state inspection and Auth setup                                  |
 | 9 — Mobile hardware    | NOT STARTED                    | Camera/OTG verification                                                     |
@@ -28,15 +28,13 @@ Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests 
 
 ## Active checkpoint record
 
-- Phase / checkpoint: 6 / A and B (History, returns, expenses, reports) — independent review completed, all nine findings repaired.
-- State: READY FOR HARDWARE CHECK.
-- Base commit / result commit: base `bdc3d3d`, implementation `29f078d`, repair commit recorded below.
-- Built: Sales history screen (`SalesScreen`) showing sales newest first, receipt search (`receipt_no` / note), date filter (`startDate`, `endDate`), per-day totals breakdown (count, revenue, refunds), detail / reprint reuses `ReceiptModal`, return modal with item quantities bounded by remaining sold quantity, restock / no-restock toggle per line, cash / online refund method, note, atomic batch execution via `ReturnRepo.processReturn` with in-batch limit guard (`_operation_guards`), synchronous double-submit ref guard, and in-modal error reporting; expense screen (`ExpensesScreen`) for expense list, add, edit, and soft-delete with validated date, positive integer amount, category, and note, attributed to the current device via `DeviceRepo`; reports screen (`ReportsScreen`) with quick presets (Today, Yesterday, Last 7 days, This month, Last month) and custom date range inputs, SPEC P&L cards (Net Revenue, Net COGS, Gross Profit, Expenses, Net Profit, Sales Count, Avg Sale Value, Cash Sales, Online Sales), Top 10 items tables by quantity and profit, and Recharts daily trend chart (`getDailySeries`).
-- Review repairs (this commit): `ReturnRepo.getReturns`/`getReturnItems` zod-validated reads replace raw SQL in `SalesScreen`; return validation errors surface inside the return modal (no more throw-outside-try or errors hidden behind the overlay); `notifyStockChanged()` after restocking returns; expense saves use the loaded device id (no fabricated fallback) and a synchronous submitting ref; the benchmark test is honest (50-sale smoke, always run) with a real 1,000-sale benchmark opt-in via `VAPORFLOW_BENCH=1` (NOT RUN); P&L test asserts all nine fields on the canonical seed; returns coverage adds on-hand assertions (100 − 3 + 1 = 98), no-restock writes no movement (ledger stays at 3 rows), full-return path and post-full-return rejection, and netted P&L after returns (net_revenue 0, net_cogs 2400, net_profit −2400); unused `react-day-picker` removed; dead `PlaceholderScreens.tsx` deleted. Details in [Phase 6 review](PHASE6_REVIEW.md).
-- Automated checks: `pnpm lint`, `pnpm typecheck`, `pnpm test` (96 tests across 17 files, plus 1 skipped opt-in benchmark), `pnpm --filter @vaporflow/app build` PASS.
-- Hardware/live checks: NOT RUN — physical printer and mobile device verification remain pending.
-- Review findings: all nine resolved (2 HIGH, 3 MEDIUM, 4 LOW); none blocking.
-- Known issues / required decisions: sales history loads all sales without pagination (revisit at Phase 7/8); history per-day refunds attribute to the sale's date while P&L attributes refunds to `returned_at` (documented inconsistency); recharts keeps the main bundle at 842 kB (232 kB gzip) — lazy-loading the reports screen is optional future work.
-- Next action: Phase 7 (CSV import and backup/restore).
+- Phase / checkpoint: 7 / A and B (CSV Import and Backup/Restore)
+- State: READY FOR HARDWARE CHECK
+- Built: CSV product import via PapaParse and Zod (`csv-import.ts`), supporting template generation (`generateCsvTemplate`), live preview with error validation, duplicate file/database barcode checks, category creation/product grouping/variant matching, skip vs update price strategies, 200-row chunked atomic batches (`DbAdapter.batch`), progress tracking, and idempotent opening stock handling (preventing duplicate opening movements on re-import); settings backup export (`.vfbackup` JSON containing all synced tables) and robust validation/restore (`backup.ts`) with transaction safety, resetting/restoring synced rows with `dirty = 1`, preserving local device identity/code, PIN hash, and recovery of receipt counter without reuse (`receipt_counter` recovery from max sales receipt number). UI integration in Products screen (`Import CSV` modal with template download, file upload, preview table, and progress bar) and Settings screen (`Export Backup` and `Restore Backup` with validation, warning confirmation modal, and auto-reload).
+- Automated checks: `pnpm lint`, `pnpm typecheck`, `pnpm test` (102 tests passed across 18 test files, including 2,000-row CSV import performance test in <1s and backup/restore tests), `pnpm --filter @vaporflow/app build` PASS.
+- Hardware/live checks: NOT RUN — Windows and Android round-trip import/restore smoke checks remain pending.
+- Review findings: None (new phase implementation).
+- Known issues / required decisions: Large CSV files (>10k rows) should be imported in chunks (2,000 rows takes <0.7s).
+- Next action: Phase 8A (Sync engine and simulated devices).
 
 Never mark an unrun hardware check as passed.
