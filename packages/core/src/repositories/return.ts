@@ -6,6 +6,8 @@ import {
   SaleItemSchema,
   Return,
   ReturnItem,
+  ReturnSchema,
+  ReturnItemSchema,
   ProcessReturnInput,
   ProcessReturnInputSchema,
 } from '../types/schemas.js';
@@ -18,6 +20,31 @@ import { DbAdapter } from '../db-adapter.js';
 
 export class ReturnRepo {
   constructor(private db: DbAdapter) {}
+
+  /** All live returns for a shop, newest first. */
+  async getReturns(shopId: string): Promise<Return[]> {
+    IdSchema.parse(shopId);
+    return readRows(
+      this.db,
+      ReturnSchema,
+      `SELECT * FROM returns WHERE shop_id = ? AND deleted_at IS NULL
+       ORDER BY returned_at DESC, created_at DESC`,
+      [shopId],
+    );
+  }
+
+  /** All live return items for a shop (joined to a live return header). */
+  async getReturnItems(shopId: string): Promise<ReturnItem[]> {
+    IdSchema.parse(shopId);
+    return readRows(
+      this.db,
+      ReturnItemSchema,
+      `SELECT ri.* FROM return_items ri
+       JOIN returns r ON r.id = ri.return_id
+       WHERE ri.shop_id = ? AND ri.deleted_at IS NULL AND r.deleted_at IS NULL`,
+      [shopId],
+    );
+  }
 
   async processReturn(
     input: ProcessReturnInput,

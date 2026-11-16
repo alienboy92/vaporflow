@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
 import {
   ShopRepo,
   ExpenseRepo,
+  DeviceRepo,
   uuidv7,
   formatMoney,
   localDate,
@@ -27,6 +28,9 @@ export function ExpensesScreen() {
   const [category, setCategory] = useState(CATEGORIES[0]!);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  // Synchronous double-submit guard (same-tick double-click / double-Enter).
+  const submittingRef = useRef(false);
 
   const loadExpenses = useCallback(async () => {
     try {
@@ -34,6 +38,10 @@ export function ExpensesScreen() {
       const activeShop = await shopRepo.getActiveShop();
       if (!activeShop) return;
       setShop(activeShop);
+
+      // Sync attribution needs THIS device, not the shop's creating device.
+      const devices = await new DeviceRepo(db).getDevices(activeShop.id);
+      if (devices[0]) setDeviceId(devices[0].id);
 
       const expenseRepo = new ExpenseRepo(db);
       const list = await expenseRepo.getAll(activeShop.id);
@@ -70,7 +78,7 @@ export function ExpensesScreen() {
 
   async function handleSaveExpense(e: React.FormEvent) {
     e.preventDefault();
-    if (!shop || submitting) return;
+    if (!shop || submittingRef.current) return;
 
     const amount = parseInt(amountInput || '0', 10);
     if (!Number.isInteger(amount) || amount <= 0) {
@@ -81,7 +89,12 @@ export function ExpensesScreen() {
       setError('Expense date is required');
       return;
     }
+    if (!deviceId) {
+      setError('Device is not registered yet. Open Settings to register this device.');
+      return;
+    }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setError('');
 
@@ -100,7 +113,7 @@ export function ExpensesScreen() {
         created_at: nowIso,
         updated_at: nowIso,
         deleted_at: null,
-        device_id: shop.device_id || uuidv7(),
+        device_id: deviceId,
         dirty: 1,
         server_updated_at: null,
       };
@@ -112,6 +125,7 @@ export function ExpensesScreen() {
       globalErrorLogger.log(err);
       setError(err instanceof Error ? err.message : 'Failed to save expense');
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }

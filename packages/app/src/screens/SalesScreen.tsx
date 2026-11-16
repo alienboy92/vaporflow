@@ -11,6 +11,7 @@ import {
 } from '@vaporflow/core';
 import type { Shop, Sale, SaleItem, Return, ReturnItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
+import { notifyStockChanged } from '../utils/stock-events';
 import { ReceiptModal } from '../components/ReceiptModal';
 
 export function SalesScreen() {
@@ -36,6 +37,9 @@ export function SalesScreen() {
   const [refundMethod, setRefundMethod] = useState<'cash' | 'online'>('cash');
   const [returnNote, setReturnNote] = useState('');
   const [submittingReturn, setSubmittingReturn] = useState(false);
+  // Errors surfaced INSIDE the return modal: the page-level error banner sits
+  // behind the fixed modal overlay and would never be seen by the cashier.
+  const [returnError, setReturnError] = useState('');
   const returnSubmittingRef = useRef(false);
 
   const loadData = useCallback(async () => {
@@ -54,48 +58,10 @@ export function SalesScreen() {
       const allSales = await saleRepo.getSales(activeShop.id);
       setSales(allSales);
 
-      // Load returns and return items
-      const rawReturns = await db.query<Record<string, unknown>>(
-        `SELECT * FROM returns WHERE shop_id = ? AND deleted_at IS NULL`,
-        [activeShop.id],
-      );
-      const returnsList: Return[] = rawReturns.map((r) => ({
-        id: String(r['id']),
-        shop_id: String(r['shop_id']),
-        sale_id: String(r['sale_id']),
-        returned_at: String(r['returned_at']),
-        refund_amount: Number(r['refund_amount']),
-        refund_method: r['refund_method'] as 'cash' | 'online',
-        note: r['note'] ? String(r['note']) : null,
-        created_at: String(r['created_at']),
-        updated_at: String(r['updated_at']),
-        deleted_at: r['deleted_at'] ? String(r['deleted_at']) : null,
-        device_id: String(r['device_id']),
-        dirty: Number(r['dirty']),
-        server_updated_at: r['server_updated_at'] ? String(r['server_updated_at']) : null,
-      }));
-
-      const rawReturnItems = await db.query<Record<string, unknown>>(
-        `SELECT ri.* FROM return_items ri JOIN returns r ON r.id = ri.return_id WHERE ri.shop_id = ? AND ri.deleted_at IS NULL AND r.deleted_at IS NULL`,
-        [activeShop.id],
-      );
-      const returnItemsList: ReturnItem[] = rawReturnItems.map((ri) => ({
-        id: String(ri['id']),
-        shop_id: String(ri['shop_id']),
-        return_id: String(ri['return_id']),
-        sale_item_id: String(ri['sale_item_id']),
-        variant_id: String(ri['variant_id']),
-        qty: Number(ri['qty']),
-        refund_amount: Number(ri['refund_amount']),
-        unit_cost: Number(ri['unit_cost']),
-        restocked: Number(ri['restocked']),
-        created_at: String(ri['created_at']),
-        updated_at: String(ri['updated_at']),
-        deleted_at: ri['deleted_at'] ? String(ri['deleted_at']) : null,
-        device_id: String(ri['device_id']),
-        dirty: Number(ri['dirty']),
-        server_updated_at: ri['server_updated_at'] ? String(ri['server_updated_at']) : null,
-      }));
+      // Load returns and return items through the repository (zod-validated).
+      const returnRepo = new ReturnRepo(db);
+      const returnsList = await returnRepo.getReturns(activeShop.id);
+      const returnItemsList = await returnRepo.getReturnItems(activeShop.id);
 
       const rMap = new Map<string, Return[]>();
       for (const ret of returnsList) {
@@ -151,6 +117,7 @@ export function SalesScreen() {
         setReturnRestocked(initialRestocked);
         setRefundMethod(sale.payment_method);
         setReturnNote('');
+        setReturnError('');
       }
     } catch (err) {
       globalErrorLogger.log(err);
@@ -162,33 +129,41 @@ export function SalesScreen() {
     e.preventDefault();
     if (!returningSale || !shop || !deviceId || returnSubmittingRef.current) return;
 
-    const linesToReturn = returningSale.items
-      .map((item) => {
-        const qty = returnQuantities[item.id] || 0;
-        if (qty <= 0) return null;
-        // Check remaining quantity
-        const returnedItems = returnItemsMap.get(item.id) || [];
-        const alreadyReturned = returnedItems.reduce((sum, ri) => sum + ri.qty, 0);
-        if (alreadyReturned + qty > item.qty) {
-          throw new Error(`Return quantity exceeds remaining quantity for ${item.product_name}`);
-        }
-        return {
-          sale_item_id: item.id,
-          variant_id: item.variant_id,
-          qty,
-          restocked: returnRestocked[item.id] ?? true,
-        };
-      })
-      .filter(Boolean) as { sale_item_id: string; variant_id: string; qty: number; restocked: boolean }[];
+    // Validate BEFORE any async work; validation failures show inside the
+    // modal instead of throwing an unhandled rejection.
+    const linesToReturn: {
+      sale_item_id: string;
+      variant_id: string;
+      qty: number;
+      restocked: boolean;
+    }[] = [];
+    for (const item of returningSale.items) {
+      const qty = returnQuantities[item.id] || 0;
+      if (qty <= 0) continue;
+      const returnedItems = returnItemsMap.get(item.id) || [];
+      const alreadyReturned = returnedItems.reduce((sum, ri) => sum + ri.qty, 0);
+      if (alreadyReturned + qty > item.qty) {
+        setReturnError(
+          `Return quantity exceeds remaining quantity for ${item.product_name} (${item.variant_name}).`,
+        );
+        return;
+      }
+      linesToReturn.push({
+        sale_item_id: item.id,
+        variant_id: item.variant_id,
+        qty,
+        restocked: returnRestocked[item.id] ?? true,
+      });
+    }
 
     if (linesToReturn.length === 0) {
-      window.alert('Please specify a return quantity for at least one item.');
+      setReturnError('Please specify a return quantity for at least one item.');
       return;
     }
 
     returnSubmittingRef.current = true;
     setSubmittingReturn(true);
-    setError('');
+    setReturnError('');
 
     try {
       const returnRepo = new ReturnRepo(db);
@@ -214,10 +189,12 @@ export function SalesScreen() {
       );
 
       setReturningSale(null);
+      // A restocking return writes stock movements: refresh the badge now.
+      notifyStockChanged();
       await loadData();
     } catch (err: unknown) {
       globalErrorLogger.log(err);
-      setError(err instanceof Error ? err.message : 'Failed to process return');
+      setReturnError(err instanceof Error ? err.message : 'Failed to process return');
     } finally {
       returnSubmittingRef.current = false;
       setSubmittingReturn(false);
@@ -442,6 +419,11 @@ export function SalesScreen() {
             </div>
 
             <form onSubmit={handleSubmitReturn} className="p-6 overflow-y-auto space-y-6 flex-1">
+              {returnError && (
+                <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {returnError}
+                </div>
+              )}
               <div className="space-y-3">
                 <h4 className="text-sm font-bold text-gray-800">Select items and quantities to return:</h4>
                 <div className="border rounded-lg divide-y bg-gray-50">

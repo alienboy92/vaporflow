@@ -16,7 +16,6 @@
     "@vaporflow/core": "workspace:*",
     "@vaporflow/mobile": "workspace:*",
     "react": "^18.3.1",
-    "react-day-picker": "8.10.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
     "recharts": "2.13.3"
