@@ -9,6 +9,7 @@ import {
   SyncProblem,
   TableSchemas,
 } from './types.js';
+import { toWire, wireToLocal, normalizeTimestamp } from './convert.js';
 
 export interface SyncEngineOptions {
   clock?: () => Date;
@@ -22,10 +23,13 @@ export class SyncEngine {
   private isSyncing = false;
   private queuedSync = false;
   private lastSuccessAt: string | null = null;
+  private lastError: string | null = null;
   private problems: SyncProblem[] = [];
   private consecutiveFailures = 0;
   private timer: NodeJS.Timeout | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
+  private backoffTimer: NodeJS.Timeout | null = null;
+  private queuedTimer: NodeJS.Timeout | null = null;
   private unsubscribeNetwork: (() => void) | null = null;
   private clock: () => Date;
   private st: typeof setTimeout;
@@ -74,6 +78,17 @@ export class SyncEngine {
       this.ct(this.debounceTimer);
       this.debounceTimer = null;
     }
+    // Cancel any pending backoff retry and queued-sync callback too:
+    // a stopped engine must not keep syncing behind the caller's back.
+    if (this.backoffTimer) {
+      this.ct(this.backoffTimer);
+      this.backoffTimer = null;
+    }
+    if (this.queuedTimer) {
+      this.ct(this.queuedTimer);
+      this.queuedTimer = null;
+    }
+    this.queuedSync = false;
     if (this.unsubscribeNetwork) {
       this.unsubscribeNetwork();
       this.unsubscribeNetwork = null;
@@ -85,7 +100,10 @@ export class SyncEngine {
       this.queuedSync = true;
       return;
     }
-    this.syncNow().catch(() => {});
+    this.syncNow().catch(() => {
+      // Fire-and-forget trigger: syncNow has already recorded lastError,
+      // surfaced it through getStatus(), and scheduled the backoff retry.
+    });
   }
 
   saleCompleted(): void {
@@ -112,22 +130,32 @@ export class SyncEngine {
       await this.pullAll();
 
       this.lastSuccessAt = this.clock().toISOString();
+      this.lastError = null;
       this.consecutiveFailures = 0;
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Failures must be visible even when no specific row is at fault
+      // (network loss, server outage): without this a server outage would
+      // render as plain `synced`.
+      this.lastError = message;
       this.consecutiveFailures++;
       const backoffMs = Math.min(30000, 1000 * Math.pow(2, this.consecutiveFailures - 1));
-      this.st(() => {
+      this.backoffTimer = this.st(() => {
+        this.backoffTimer = null;
         if (this.network.isOnline()) {
           this.trigger('retry-backoff');
         }
       }, backoffMs);
-      throw err instanceof Error ? err : new Error(String(err));
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       this.isSyncing = false;
       if (this.queuedSync) {
         this.queuedSync = false;
-        this.st(() => {
-          this.syncNow().catch(() => {});
+        this.queuedTimer = this.st(() => {
+          this.queuedTimer = null;
+          void this.syncNow().catch(() => {
+            // surfaced through lastError as above
+          });
         }, 100);
       }
     }
@@ -156,7 +184,7 @@ export class SyncEngine {
     let status: SyncStatus = 'synced';
     if (!online) {
       status = 'offline';
-    } else if (this.problems.length > 0) {
+    } else if (this.problems.length > 0 || this.lastError !== null) {
       status = 'error';
     } else if (pendingCount > 0) {
       status = 'pending';
@@ -166,6 +194,7 @@ export class SyncEngine {
       status,
       pendingCount,
       lastSuccessAt: this.lastSuccessAt,
+      lastError: this.lastError,
       problems: [...this.problems],
       isSyncing: this.isSyncing,
     };
@@ -201,7 +230,31 @@ export class SyncEngine {
         snapshots.set(String(row.id), String(row.updated_at));
       }
 
-      const result = await this.transport.push(table, rows);
+      // Local -> wire: the transport speaks PostgreSQL JSON (booleans, no
+      // dirty/server_updated_at). This is what sync_push receives in
+      // production; testing only ever exercised SQLite-shaped rows before.
+      const wireRows = rows.map((row) => toWire(table, row));
+
+      let result: { accepted: number; errors?: Array<{ id: string; error: string }> };
+      try {
+        result = await this.transport.push(table, wireRows);
+      } catch (err: unknown) {
+        // Batch-atomic transports (the real sync_push RPC) reject the whole
+        // batch and write nothing — there is no per-row error array. Surface
+        // one actionable problem for the batch and let syncNow schedule the
+        // backoff retry.
+        const message = err instanceof Error ? err.message : String(err);
+        const batchId = String(rows[0]!.id);
+        this.problems = this.problems.filter((p) => !(p.table === table && p.id === batchId));
+        this.problems.push({
+          table,
+          id: batchId,
+          error: `Push rejected: ${message}`,
+          timestamp: this.clock().toISOString(),
+          row: wireRows,
+        });
+        throw err instanceof Error ? err : new Error(message);
+      }
 
       const rejectedIds = new Set<string>();
       if (result.errors) {
@@ -221,30 +274,34 @@ export class SyncEngine {
         }
       }
 
-      const statements: { sql: string; params?: unknown[] }[] = [];
+      // Conditional dirty-clear in ONE batch: each statement re-checks
+      // `dirty = 1 AND updated_at = snapshot` inside the SQL, so an edit that
+      // lands while the push is in flight (new updated_at, dirty = 1) is
+      // never wrongly cleared — the check and the write are the same atomic
+      // operation, not a check-then-act across an await.
       const nowIso = this.clock().toISOString();
-
+      const statements: { sql: string; params?: unknown[] }[] = [];
       for (const row of rows) {
         const id = String(row.id);
         if (rejectedIds.has(id)) {
           continue;
         }
-
-        const originalUpdatedAt = snapshots.get(id);
-        const current = await this.db.query<{ dirty: number; updated_at: string }>(
-          `SELECT dirty, updated_at FROM ${table} WHERE id = ?`,
-          [id],
-        );
-        if (current[0] && current[0].dirty === 1 && current[0].updated_at === originalUpdatedAt) {
-          statements.push({
-            sql: `UPDATE ${table} SET dirty = 0, server_updated_at = ? WHERE id = ?`,
-            params: [nowIso, id],
-          });
-        }
+        statements.push({
+          sql: `UPDATE ${table} SET dirty = 0, server_updated_at = ? WHERE id = ? AND dirty = 1 AND updated_at = ?`,
+          params: [nowIso, id, snapshots.get(id)],
+        });
       }
 
       if (statements.length > 0) {
         await this.db.batch(statements);
+        // A successful acknowledgement also clears any earlier problem
+        // recorded for these rows (e.g. a conflict fixed since).
+        for (const row of rows) {
+          const id = String(row.id);
+          if (!rejectedIds.has(id)) {
+            this.problems = this.problems.filter((p) => !(p.table === table && p.id === id));
+          }
+        }
       }
 
       if (rows.length < 200) {
@@ -306,19 +363,44 @@ export class SyncEngine {
       let lastServerUpdatedAt = cursorTs;
       let lastId = cursorId;
 
-      for (const rawRow of incomingRows) {
+      for (const raw of incomingRows) {
+        const rawRow = raw as Record<string, unknown>;
+        const rowId =
+          typeof rawRow.id === 'string' && rawRow.id ? rawRow.id : String(rawRow.id ?? 'unknown');
+        // The cursor for this row, usable even when the row fails validation.
+        let rowCursorTs: string | null = null;
+        if (typeof rawRow.server_updated_at === 'string') {
+          try {
+            rowCursorTs = normalizeTimestamp(rawRow.server_updated_at);
+          } catch {
+            rowCursorTs = rawRow.server_updated_at;
+          }
+        }
+
         let validated: Record<string, unknown>;
         try {
-          validated = schema.parse(rawRow) as Record<string, unknown>;
+          // Wire -> local first: PG booleans become 0/1, timestamps become
+          // 3ms UTC, and the missing `dirty` column is injected before the
+          // local schema validates the row.
+          validated = schema.parse(wireToLocal(table, rawRow)) as Record<string, unknown>;
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : String(err);
           this.problems.push({
             table,
-            id: String(rawRow.id ?? 'unknown'),
+            id: rowId,
             error: `Validation error: ${message}`,
             timestamp: this.clock().toISOString(),
             row: rawRow,
           });
+          // Rejected rows must still advance the cursor: they are kept in
+          // problems, so nothing disappears, but the pull must not wedge
+          // forever re-fetching the same page. Only rows with an unusable
+          // server identity cannot advance (and cannot block a later valid
+          // row in the same page from advancing past them).
+          if (rowCursorTs !== null && rowId !== 'unknown') {
+            lastServerUpdatedAt = rowCursorTs;
+            lastId = rowId;
+          }
           continue;
         }
 

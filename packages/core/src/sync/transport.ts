@@ -1,6 +1,25 @@
 import { DbAdapter } from '../db-adapter.js';
 import { SYNC_TABLES, MUTABLE_TABLES, SyncTransport } from './types.js';
+import { wireToLocal, storageToWire } from './convert.js';
 
+/**
+ * Simulated sync server backed by SQLite, faithful to the Supabase
+ * sync_push / sync_pull RPC semantics (supabase/migrations/00001_initial.sql,
+ * proven against the real RPCs by postgres.test.ts with PGlite):
+ *
+ *  - push() accepts and pull() returns WIRE-format rows: PG booleans, any
+ *    offset/precision timestamps, no `dirty` column. Storage conversion is
+ *    done here, exactly as jsonb_populate_record casts the JSON into PG
+ *    columns.
+ *  - push() is batch-atomic like the real RPC: any rejected row RAISES, so
+ *    the whole batch throws and nothing is written — there are no per-row
+ *    error arrays.
+ *  - Mutable tables use strict last-write-wins: EXCLUDED.updated_at >
+ *    stored.updated_at. An equal or older row is acknowledged but NOT applied.
+ *  - Ledger tables are insert-only idempotent (ON CONFLICT (id) DO NOTHING);
+ *    a duplicate ledger row is acknowledged.
+ *  - pull() orders by (server_updated_at, id) with a 1..500 limit.
+ */
 export class SQLiteSyncServer implements SyncTransport {
   constructor(private serverDb: DbAdapter) {}
 
@@ -16,53 +35,50 @@ export class SQLiteSyncServer implements SyncTransport {
     }
 
     const mutable = MUTABLE_TABLES.has(table);
-    let accepted = 0;
-    const errors: Array<{ id: string; error: string }> = [];
-
     const statements: { sql: string; params?: unknown[] }[] = [];
+    const nowIso = new Date().toISOString();
 
     for (const row of rows) {
-      if (!row || typeof row !== 'object') {
-        continue;
+      if (!row || typeof row !== 'object' || Array.isArray(row)) {
+        throw new Error('Row must be an object');
       }
       const r = row as Record<string, unknown>;
-      const id = r.id as string;
-      const shopId = r.shop_id as string;
-      if (!id || !shopId) {
-        errors.push({ id: String(id ?? 'unknown'), error: 'Missing id or shop_id' });
-        continue;
+      const id = r.id;
+      const shopId = r.shop_id;
+      if (typeof id !== 'string' || !id || typeof shopId !== 'string' || !shopId) {
+        throw new Error(`Row missing id or shop_id: ${JSON.stringify(row).slice(0, 120)}`);
       }
 
-      if (table === 'variants' && r.barcode && !r.deleted_at) {
-        const existingBarcode = await this.serverDb.query<{ id: string }>(
+      // Wire -> storage, exactly as jsonb_populate_record casts the JSON into
+      // the table's columns: booleans cast to 0/1, timestamps normalize, and
+      // the absent `dirty` column takes its default (0 here).
+      const stored = wireToLocal(table, r);
+
+      // Duplicate barcode conflicts raise in PostgreSQL via the partial
+      // unique index; pre-checking here just produces a readable message.
+      // Either way the whole batch is rejected before anything is written.
+      if (table === 'variants' && stored.barcode && !stored.deleted_at) {
+        const existing = await this.serverDb.query<{ id: string }>(
           `SELECT id FROM variants WHERE shop_id = ? AND barcode = ? AND id != ? AND deleted_at IS NULL`,
-          [shopId, r.barcode, id],
+          [shopId, stored.barcode, id],
         );
-        if (existingBarcode.length > 0) {
-          errors.push({
-            id,
-            error: `Duplicate barcode conflict: barcode ${r.barcode} already exists in shop`,
-          });
-          continue;
+        if (existing.length > 0) {
+          throw new Error(
+            `Duplicate barcode conflict: barcode ${String(stored.barcode)} already exists in shop (batch rejected, nothing was written)`,
+          );
         }
       }
 
-      const nowIso = new Date().toISOString();
-
       if (mutable) {
-        const keys = Object.keys(r).filter(
-          (k) => k !== 'dirty' && k !== 'server_updated_at',
-        );
+        const keys = Object.keys(stored);
         const placeholders = keys.map(() => '?').join(', ');
         const updateSets = keys
           .filter((k) => k !== 'id' && k !== 'shop_id' && k !== 'created_at' && k !== 'device_id')
           .map((k) => `${k} = ?`)
           .join(', ');
-
-        const values = keys.map((k) => r[k]);
         const updateValues = keys
           .filter((k) => k !== 'id' && k !== 'shop_id' && k !== 'created_at' && k !== 'device_id')
-          .map((k) => r[k]);
+          .map((k) => stored[k]);
 
         const sql = `
           INSERT INTO ${table} (${keys.join(', ')}, server_updated_at)
@@ -70,37 +86,31 @@ export class SQLiteSyncServer implements SyncTransport {
           ON CONFLICT(id) DO UPDATE SET
             ${updateSets},
             server_updated_at = ?
-          WHERE excluded.updated_at >= ${table}.updated_at AND ${table}.shop_id = excluded.shop_id
+          WHERE excluded.updated_at > ${table}.updated_at AND ${table}.shop_id = excluded.shop_id
         `;
-        const params = [...values, nowIso, ...updateValues, nowIso];
-        statements.push({ sql, params });
+        statements.push({ sql, params: [...keys.map((k) => stored[k]), nowIso, ...updateValues, nowIso] });
       } else {
-        const keys = Object.keys(r).filter(
-          (k) => k !== 'dirty' && k !== 'server_updated_at',
-        );
+        const keys = Object.keys(stored);
         const placeholders = keys.map(() => '?').join(', ');
-        const values = keys.map((k) => r[k]);
-
         const sql = `
           INSERT INTO ${table} (${keys.join(', ')}, server_updated_at)
           VALUES (${placeholders}, ?)
           ON CONFLICT(id) DO NOTHING
         `;
-        statements.push({ sql, params: [...values, nowIso] });
+        statements.push({ sql, params: [...keys.map((k) => stored[k]), nowIso] });
       }
-      accepted++;
     }
 
+    // The batch is a single transaction: a constraint violation (e.g. two
+    // rows in the same batch sharing a barcode) throws and rolls back
+    // everything, matching the real RPC's whole-batch rollback.
     if (statements.length > 0) {
-      try {
-        await this.serverDb.batch(statements);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`Server push batch failed: ${message}`);
-      }
+      await this.serverDb.batch(statements);
     }
 
-    return { accepted, errors: errors.length > 0 ? errors : undefined };
+    // Stale mutable rows and duplicate ledger rows are acknowledged too,
+    // exactly as the real RPC counts them.
+    return { accepted: rows.length };
   }
 
   async pull(
@@ -131,6 +141,8 @@ export class SQLiteSyncServer implements SyncTransport {
     sql += ` ORDER BY server_updated_at ASC, id ASC LIMIT ?`;
     params.push(limit);
 
-    return this.serverDb.query(sql, params);
+    const rows = await this.serverDb.query<Record<string, unknown>>(sql, params);
+    // Mirror to_jsonb(t): the server never exposes the local-only dirty column.
+    return rows.map((row) => storageToWire(table, row));
   }
 }

@@ -27,6 +27,8 @@ export interface SyncState {
   status: SyncStatus;
   pendingCount: number;
   lastSuccessAt: string | null;
+  /** Message of the last failed sync run; null after a successful run. */
+  lastError: string | null;
   problems: SyncProblem[];
   isSyncing: boolean;
 }
