@@ -6,6 +6,7 @@
  */
 
 export * from './types/index.js';
+export * from './dates.js';
 export * from './money.js';
 export * from './uuid.js';
 export * from './barcode.js';

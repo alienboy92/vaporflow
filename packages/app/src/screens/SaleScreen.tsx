@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDb, usePlatform } from '../context/DbProvider';
+import { useDb } from '../context/DbProvider';
 import {
   ProductRepo,
   StockRepo,
@@ -14,9 +14,7 @@ import {
 import type { Shop, Variant, Sale, SaleItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
-import { buildReceiptHtml, RECEIPT_CSS } from '../utils/receipt-html';
-import { buildReceiptPdf } from '../utils/receipt-pdf';
-import { printHtml } from '../utils/print';
+import { ReceiptModal } from '../components/ReceiptModal';
 
 interface CartLine {
   variant_id: string;
@@ -684,153 +682,3 @@ export function SaleScreen() {
   );
 }
 
-interface ReceiptModalProps {
-  result: { sale: Sale; items: SaleItem[] };
-  shop: Shop;
-  onClose: () => void;
-}
-
-function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
-  const { sale, items } = result;
-  const platform = usePlatform();
-  const currency = shop.currency_code ?? 'PKR';
-
-  // Prints exactly the receipt content through a hidden iframe document with
-  // an 80mm page size — never the whole POS page.
-  function handlePrint() {
-    try {
-      printHtml(buildReceiptHtml(sale, items, shop), RECEIPT_CSS, `Receipt ${sale.receipt_no}`);
-    } catch (err) {
-      globalErrorLogger.log(err);
-      window.alert('Could not open the print dialog. Check that a printer is available.');
-    }
-  }
-
-  // Shares the receipt as a PDF file through the platform share adapter
-  // (Android share sheet; desktop saves the file).
-  async function handleShare() {
-    const fileName = `receipt-${sale.receipt_no}.pdf`;
-    try {
-      const bytes = buildReceiptPdf(sale, items, shop);
-      await platform.share.shareFile(fileName, bytes, 'application/pdf');
-    } catch (err) {
-      globalErrorLogger.log(err);
-      window.alert('Could not share the receipt. The file may not be shareable on this device.');
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-4 bg-gray-900 text-white flex justify-between items-center">
-          <h3 className="font-bold text-lg">Sale Complete</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white font-bold text-xl px-2">
-            ✕
-          </button>
-        </div>
-
-        {/* Printable 80mm Receipt Area */}
-        <div id="receipt-print-area" className="p-6 overflow-y-auto space-y-4 font-mono text-xs text-gray-800 bg-white">
-          <div className="text-center space-y-1">
-            {shop.show_logo_on_receipt === 1 && shop.logo_base64 && (
-              <div className="flex justify-center mb-2">
-                <img src={shop.logo_base64} alt="Shop Logo" className="max-h-16 max-w-[120px] object-contain" />
-              </div>
-            )}
-            <h4 className="font-bold text-sm">{shop.name}</h4>
-            {shop.address && <p>{shop.address}</p>}
-            {shop.phone && <p>Tel: {shop.phone}</p>}
-          </div>
-
-          <div className="border-t border-b border-dashed py-2 space-y-1">
-            <div className="flex justify-between">
-              <span>Receipt No:</span>
-              <span className="font-bold">{sale.receipt_no}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Date:</span>
-              <span>{new Date(sale.sold_at).toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Payment:</span>
-              <span className="uppercase">{sale.payment_method}</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="border-b pb-1 font-bold flex justify-between text-[11px]">
-              <span>ITEM</span>
-              <span>QTY x PRICE</span>
-              <span>TOTAL</span>
-            </div>
-            {items.map((item) => (
-              <div key={item.id} className="space-y-0.5">
-                <div className="font-bold">{item.product_name} ({item.variant_name})</div>
-                <div className="flex justify-between text-gray-600">
-                  <span></span>
-                  <span>{item.qty} x {formatMoney(item.unit_price, 0, currency)}</span>
-                  <span>{formatMoney(item.net_total, 0, currency)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t border-dashed pt-2 space-y-1 text-right">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span>{formatMoney(sale.subtotal, 0, currency)}</span>
-            </div>
-            {sale.discount_amount > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>Discount:</span>
-                <span>-{formatMoney(sale.discount_amount, 0, currency)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm font-bold pt-1 border-t">
-              <span>TOTAL:</span>
-              <span>{formatMoney(sale.total, 0, currency)}</span>
-            </div>
-            {sale.amount_received !== null && (
-              <>
-                <div className="flex justify-between text-gray-600">
-                  <span>Cash Received:</span>
-                  <span>{formatMoney(sale.amount_received, 0, currency)}</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Change Due:</span>
-                  <span>{formatMoney(Math.max(0, sale.amount_received - sale.total), 0, currency)}</span>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="text-center pt-4 border-t border-dashed text-gray-600 italic">
-            {shop.receipt_footer}
-          </div>
-        </div>
-
-        {/* Modal Actions */}
-        <div className="p-4 bg-gray-50 border-t flex flex-wrap gap-2 justify-end">
-          <button
-            onClick={handlePrint}
-            className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-lg font-medium text-sm min-h-11 flex-1 sm:flex-none"
-          >
-            Print Receipt
-          </button>
-          <button
-            onClick={handleShare}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-medium text-sm min-h-11 flex-1 sm:flex-none"
-          >
-            Share / Copy
-          </button>
-          <button
-            onClick={onClose}
-            className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2.5 rounded-lg font-medium text-sm min-h-11 flex-1 sm:flex-none"
-          >
-            New Sale
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

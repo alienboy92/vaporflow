@@ -2,14 +2,12 @@ import { useEffect, useState } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { useDb } from '../context/DbProvider';
 import { StockRepo, ShopRepo } from '@vaporflow/core';
-import {
-  SalesPlaceholder,
-  ReportsPlaceholder,
-  ExpensesPlaceholder,
-} from '../screens/PlaceholderScreens';
 import { ProductsScreen } from '../screens/ProductsScreen';
 import { StockScreen } from '../screens/StockScreen';
 import { SaleScreen } from '../screens/SaleScreen';
+import { SalesScreen } from '../screens/SalesScreen';
+import { ReportsScreen } from '../screens/ReportsScreen';
+import { ExpensesScreen } from '../screens/ExpensesScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { LockScreen } from './LockScreen';
 import { useSecurity } from './use-security';
@@ -168,9 +166,9 @@ export function Shell() {
             <Route path="/" element={<SaleScreen />} />
             <Route path="/products" element={<ProductsScreen />} />
             <Route path="/stock" element={<StockScreen />} />
-            <Route path="/sales" element={<SalesPlaceholder />} />
-            <Route path="/reports" element={<ReportsPlaceholder />} />
-            <Route path="/expenses" element={<ExpensesPlaceholder />} />
+            <Route path="/sales" element={<SalesScreen />} />
+            <Route path="/reports" element={<ReportsScreen />} />
+            <Route path="/expenses" element={<ExpensesScreen />} />
             <Route path="/settings" element={<SettingsScreen />} />
           </Routes>
         </main>
