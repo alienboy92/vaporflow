@@ -1,6 +1,6 @@
 # VaporFlow — Phase 5 review
 
-Updated 15 November 2026. Scope: offline checkout, receipts, and labels. Implementation commit `bdc3d3d`, review-repair commit pending. `docs/SPEC.md` is unchanged.
+Updated 16 November 2026. Scope: offline checkout, receipts, and labels. Implementation commit `bdc3d3d`, review-repair commit `edb176e`. `docs/SPEC.md` is unchanged.
 
 ## What was built
 
