@@ -2,7 +2,7 @@
 
 Version 2.0 · 15 November 2026 · Companion to SPEC v1.1
 
-**Next action: verify the Phase 4 repair, then run Prompt 5. Phases 0–3 are complete.**
+**Next action: run Prompt 8A locally. Phases 4–7 repairs and automated checks are complete; hardware acceptance remains pending. See BUILD_STATUS.md and PHASE4_7_REPAIR.md.**
 
 This revision changes delivery order, not the product specification. Every original v1 feature remains in scope. Keep this repository file as the working copy. Numbers from the previous plan are mapped below; do not mix the two sequences.
 

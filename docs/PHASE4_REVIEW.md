@@ -1,5 +1,7 @@
 # VaporFlow — Phase 4 review
 
+> Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
+
 Updated 15 November 2026. Scope: products, variants, and stock workflows. Implementation commit `bb9387d`, review-repair commit `f03b265`, badge-refresh commit `3d2e0e0`. `docs/SPEC.md` is unchanged.
 
 ## What was built

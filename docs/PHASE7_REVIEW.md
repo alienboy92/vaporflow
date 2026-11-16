@@ -1,5 +1,7 @@
 # VaporFlow — Phase 7 review
 
+> Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
+
 Updated 16 November 2026. Scope: CSV product import and backup/restore. Implementation commit `7afe425`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
 
 ## What was built

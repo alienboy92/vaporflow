@@ -1,5 +1,7 @@
 # VaporFlow — Phase 6 review
 
+> Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
+
 Updated 16 November 2026. Scope: sales history, returns, expenses, and P&L reports. Implementation commit `29f078d`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
 
 ## What was built

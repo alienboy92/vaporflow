@@ -1,5 +1,7 @@
 # VaporFlow — Phase 5 review
 
+> Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
+
 Updated 16 November 2026. Scope: offline checkout, receipts, and labels. Implementation commit `bdc3d3d`, review-repair commit `edb176e`. `docs/SPEC.md` is unchanged.
 
 ## What was built

@@ -2,7 +2,21 @@
 
 Updated 16 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS.md).
 
-## Completed baseline
+## Current decision — 16 November 2026
+
+**READY TO START PHASE 8A locally. Phases 4–7 remain READY FOR HARDWARE CHECK.**
+
+The combined review found defects despite the earlier repair summaries. All five reported defects are now repaired, and the missing full-scale benchmark is implemented and passing. See [Phases 4–7 repair and evidence](PHASE4_7_REPAIR.md), which supersedes conflicting historical claims below.
+
+- Stock count races and repeated stock submissions fixed; failed CSV chunks restore maps/counts and retry deterministically.
+- Populated restore, counter recovery, local device/settings recovery, and ledger protections commit atomically. A 10,001-variant restore passes adapter validation.
+- Return receipt view/reprint/PDF share implemented; active device selection corrected across write screens.
+- 50,000-sale/12-month, 10,000-variant/100,000-movement benchmark passes after removing repeated report scans: 249.4 ms report, 61.2 ms inventory (Windows Node/Vitest in-memory SQLite).
+- Final checks: lint/typecheck PASS; 115 tests PASS, 2 opt-in tests skipped; app build PASS; 6 native Electron contract checks PASS. Full-scale benchmark separately run and passed.
+- No Phase 8A engine or Phase 8B cloud work was implemented. SPEC unchanged.
+- Next action: implement Prompt 8A with disposable databases and fake transport. Windows/Android recovery, scanner, print/share, responsive UI, and packaged performance checks remain pending and must be completed before real-data cloud enrollment.
+
+## Completed baseline (historical phase records)
 
 | Phase              | State                          | Evidence                                                                                                                                                                              |
 | ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -26,7 +40,7 @@ Supabase has not been deployed. Live Auth/HTTP and multi-connection claim tests 
 | 9 — Mobile hardware    | NOT STARTED                    | Camera/OTG verification                                                     |
 | 10 — Release           | NOT STARTED                    | Packaged install/update acceptance                                          |
 
-## Active checkpoint record
+## Previous checkpoint record (superseded by the repair below)
 
 - Phase / checkpoint: 7 / A and B (CSV Import and Backup/Restore) — independent review completed, all ten findings repaired.
 - State: READY FOR HARDWARE CHECK.
