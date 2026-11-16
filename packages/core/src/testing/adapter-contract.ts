@@ -1,3 +1,5 @@
+import { exportBackupJson, validateBackupJson, restoreBackup } from '../backup.js';
+import { uuidv7 } from '../uuid.js';
 import type { DbAdapter } from '../db-adapter.js';
 import { MIGRATIONS, type MigrationRecord } from '../migrations/data.js';
 import { readDevelopmentDbCheck, runDevelopmentDbCheck } from '../dev-check.js';
@@ -22,6 +24,27 @@ async function rejects(
   check(failed, `${operation}: expected operation to fail`);
 }
 export const adapterContract = [
+  {
+    name: 'populated backup replacement preserves ledger protections and rollback',
+    run: async (db: DbAdapter) => {
+      const fixture = await runDevelopmentDbCheck(db);
+      const now = new Date().toISOString();
+      const device = uuidv7();
+      await db.query("INSERT INTO devices(id,shop_id,created_at,updated_at,device_id,name,code) VALUES(?,?,?,?,?,'Contract','PC1')", [device, fixture.shopId, now, now, device]);
+      await db.query("INSERT INTO stock_movements(id,shop_id,created_at,updated_at,device_id,variant_id,qty_change,type,occurred_at) VALUES(?,?,?,?,?,?,7,'opening',?)", [uuidv7(), fixture.shopId, now, now, device, fixture.variantId, now]);
+      const backup = validateBackupJson(await exportBackupJson(db, fixture.shopId));
+      check(backup.success, 'Backup validation failed');
+      await restoreBackup(db, backup.data!);
+      await rejects(() => db.query('DELETE FROM stock_movements'), 'Ledger guard after restore');
+      const invalid = structuredClone(backup.data!);
+      invalid.tables.variants.push({ ...invalid.tables.variants[0]!, id: uuidv7(), barcode: 'DUP' });
+      invalid.tables.variants[0]!.barcode = 'DUP';
+      await rejects(() => restoreBackup(db, invalid), 'Failed replacement');
+      await rejects(() => db.query('DELETE FROM stock_movements'), 'Ledger guard after rollback');
+      const rows = await db.query<{ qty: number }>('SELECT SUM(qty_change) AS qty FROM stock_movements');
+      check(rows[0]?.qty === 7, 'Restore lost stock');
+    },
+  },
   {
     name: 'values, nulls, CTE reads and batch commit',
     run: async (db: DbAdapter) => {

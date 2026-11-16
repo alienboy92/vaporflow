@@ -234,31 +234,15 @@ export class StockRepo {
       throw new Error(`Counted quantity must be a non-negative integer (got ${countedQty}).`);
     }
 
-    const currentStock = await this.getStockOnHand(shopId, variantId);
-    const onHand = currentStock[0]?.on_hand ?? 0;
-    const qtyChange = countedQty - onHand;
-
-    if (qtyChange === 0) {
-      // Unchanged count must not create a zero movement
-      return;
-    }
-
-    const movementId = uuidv7();
+    // Compute the difference at write time, including concurrent sales/counts.
     await this.db.batch([
       {
-        sql: `INSERT INTO stock_movements (id, shop_id, variant_id, qty_change, type, ref_type, ref_id, unit_cost, note, occurred_at, created_at, updated_at, deleted_at, device_id, dirty, server_updated_at)
-              VALUES (?, ?, ?, ?, 'adjustment', NULL, NULL, NULL, ?, ?, ?, ?, NULL, ?, 1, NULL)`,
-        params: [
-          movementId,
-          shopId,
-          variantId,
-          qtyChange,
-          note,
-          timestamp,
-          timestamp,
-          timestamp,
-          deviceId,
-        ],
+        sql: `INSERT INTO stock_movements (id, shop_id, variant_id, qty_change, type, note, occurred_at, created_at, updated_at, device_id, dirty)
+          SELECT ?, ?, ?, ? - COALESCE(SUM(qty_change), 0), 'adjustment', ?, ?, ?, ?, ?, 1
+          FROM stock_movements WHERE shop_id = ? AND variant_id = ? AND deleted_at IS NULL
+          HAVING ? != COALESCE(SUM(qty_change), 0)`,
+        params: [uuidv7(), shopId, variantId, countedQty, note.trim(), timestamp, timestamp,
+          timestamp, deviceId, shopId, variantId, countedQty],
       },
     ]);
   }

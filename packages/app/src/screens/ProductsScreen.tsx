@@ -112,8 +112,8 @@ export function ProductsScreen() {
       if (!activeShop) return;
       setShop(activeShop);
 
-      const devices = await new DeviceRepo(db).getDevices(activeShop.id);
-      if (devices[0]) setDeviceId(devices[0].id);
+      const device = await new DeviceRepo(db).getActiveDevice(activeShop.id);
+      setDeviceId(device?.id ?? null);
 
       const cats = await categoryRepo.getAll(activeShop.id);
       setCategories(cats);

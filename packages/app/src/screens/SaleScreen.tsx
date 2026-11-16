@@ -66,9 +66,8 @@ export function SaleScreen() {
       if (!activeShop) return;
       setShop(activeShop);
 
-      const devices = await deviceRepo.getDevices(activeShop.id);
-      const dev = devices[0];
-      if (dev) setDeviceId(dev.id);
+      const device = await deviceRepo.getActiveDevice(activeShop.id);
+      setDeviceId(device?.id ?? null);
 
       const allProds = await productRepo.getProducts(activeShop.id);
       const allVars = await productRepo.getVariants(activeShop.id);

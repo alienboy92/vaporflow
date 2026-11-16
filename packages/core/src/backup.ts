@@ -217,8 +217,32 @@ export async function restoreBackup(db: DbAdapter, backup: VfBackup): Promise<vo
     throw new Error(validation.error || 'Invalid backup');
   }
 
+  backup = validation.data!;
+  const localSettings = z.array(z.object({ key: z.string(), value: z.string().nullable() })).parse(
+    await db.query("SELECT key, value FROM settings WHERE key IN ('active_device_id', 'receipt_counter')"),
+  );
+  const localId = localSettings.find((setting) => setting.key === 'active_device_id')?.value;
+  const previousCounter = Number(localSettings.find((setting) => setting.key === 'receipt_counter')?.value ?? '0');
+  if (!Number.isSafeInteger(previousCounter) || previousCounter < 0) throw new Error('Invalid local receipt counter');
+  const localDevice = localId ? DeviceSchema.array().parse(
+    await db.query('SELECT * FROM devices WHERE id = ? AND deleted_at IS NULL', [localId]),
+  )[0] : undefined;
+  if (localDevice) {
+    const conflict = backup.tables.devices.find((d) => d.id !== localDevice.id && d.code === localDevice.code);
+    if (conflict) throw new Error('Backup device code conflicts with this device. Change this device code before restoring.');
+    backup.tables.devices = backup.tables.devices.filter((d) => d.id !== localDevice.id);
+    backup.tables.devices.push({ ...localDevice, shop_id: backup.shop_id });
+  }
+  const activeDevice = localDevice ?? backup.tables.devices.find((d) => !d.deleted_at);
+  if (!activeDevice) throw new Error('Backup has no active device');
   const statements: { sql: string; params?: unknown[] }[] = [];
 
+  // Whole-backup recovery only. Transactional DDL restores guards on rollback;
+  // no committed database is ever left without its ledger delete protections.
+  const ledgers = ['return_items', 'returns', 'sale_items', 'sales', 'stock_movements'];
+  for (const table of ledgers) {
+    statements.push({ sql: `DROP TRIGGER ${table}_immutable_delete` });
+  }
   statements.push({ sql: 'DELETE FROM return_items' });
   statements.push({ sql: 'DELETE FROM returns' });
   statements.push({ sql: 'DELETE FROM sale_items' });
@@ -343,33 +367,41 @@ export async function restoreBackup(db: DbAdapter, backup: VfBackup): Promise<vo
     });
   }
 
-  await db.batch(statements);
-
-  // Receipt counter recovery. The counter stores the LAST-USED number (the
-  // next sale uses value + 1, per the Phase 5 convention), so it must equal
-  // the highest restored receipt number: writing max + 1 would permanently
-  // skip a number, while writing max never reuses one. The counter is a
-  // single global key, so recover from the max across ALL restored receipts
-  // (any device prefix) — otherwise a clean-install restore would leave the
-  // counter at 0 and the next sale would collide with
-  // idx_sales_receipt_no_unique and fail.
-  try {
-    const salesRes = await db.query<{ receipt_no: string }>('SELECT receipt_no FROM sales');
-    let maxCounter = 0;
-    for (const s of salesRes) {
-      const parts = s.receipt_no.split('-');
-      const num = parseInt(parts[parts.length - 1] ?? '', 10);
-      if (!isNaN(num) && num > maxCounter) maxCounter = num;
-    }
-    await db.query(
-      "INSERT INTO settings(key, value) VALUES('receipt_counter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      [String(maxCounter)],
-    );
-  } catch (err) {
-    // Non-fatal (the counter keeps its previous value), but never silent:
-    // surface it so a failed recovery is diagnosable.
-    throw new Error(
-      `Backup restored, but receipt-counter recovery failed: ${err instanceof Error ? err.message : 'unknown error'}`,
-    );
+  statements.push({
+    sql: "INSERT INTO settings(key, value) VALUES('active_shop_id', ?), ('active_device_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    params: [backup.shop_id, activeDevice.id],
+  });
+  // Counter and data must become visible in the same commit.
+  const maxCounter = backup.tables.sales.reduce((max, sale) => {
+    const suffix = /-(\d+)$/.exec(sale.receipt_no)?.[1];
+    const value = Number(suffix ?? 0);
+    if (!Number.isSafeInteger(value)) throw new Error('Invalid receipt counter in backup');
+    return Math.max(max, value);
+  }, previousCounter);
+  statements.push({
+    sql: "INSERT INTO settings(key, value) VALUES('receipt_counter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    params: [String(maxCounter)],
+  });
+  statements.push({ sql: "DELETE FROM settings WHERE key LIKE 'pull_cursor%' OR key = 'last_sync_at'" });
+  for (const table of ledgers) {
+    statements.push({ sql: `CREATE TRIGGER ${table}_immutable_delete BEFORE DELETE ON ${table}
+      BEGIN SELECT RAISE(ABORT, 'Ledger rows are immutable'); END` });
   }
+  // Keep the single atomic restore within the adapters' 10,000-statement
+  // boundary. Bound each multi-row insert below SQLite's 999-parameter floor.
+  const compact: typeof statements = [];
+  let previousSql = '';
+  for (const statement of statements) {
+    const values = /^(INSERT INTO (?!settings)[\s\S]+? VALUES )(\([^)]*\))$/.exec(statement.sql);
+    const last = compact[compact.length - 1];
+    if (values && previousSql === statement.sql && last &&
+        (last.params?.length ?? 0) + (statement.params?.length ?? 0) <= 900) {
+      last.sql += ', ' + values[2];
+      last.params!.push(...statement.params!);
+    } else {
+      compact.push({ sql: statement.sql, params: statement.params ? [...statement.params] : undefined });
+    }
+    previousSql = statement.sql;
+  }
+  await db.batch(compact);
 }

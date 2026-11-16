@@ -1,9 +1,16 @@
 import { IdSchema, Device, DeviceSchema } from '../types/schemas.js';
+import { SettingsRepo } from './settings.js';
 import { readRows } from '../query.js';
 import { DbAdapter } from '../db-adapter.js';
 
 export class DeviceRepo {
   constructor(private db: DbAdapter) {}
+
+  async getActiveDevice(shopId: string): Promise<Device | undefined> {
+    const id = await new SettingsRepo(this.db).get('active_device_id');
+    const device = id ? await this.getDevice(id) : undefined;
+    return device?.shop_id === shopId ? device : undefined;
+  }
 
   async getDevice(id: string): Promise<Device | undefined> {
     IdSchema.parse(id);

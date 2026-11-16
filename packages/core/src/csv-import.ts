@@ -272,6 +272,12 @@ export async function executeCsvImport(
   const CHUNK_SIZE = 200;
   for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
     const chunk = validRows.slice(i, i + CHUNK_SIZE);
+    const maps = [categoryMap, productMap] as const;
+    const savedMaps = maps.map((map) => new Map(map));
+    const savedBarcodes = new Map(barcodeVariantMap);
+    const savedVariants = new Map(productVariantMap);
+    const counts = { importedCount, updatedCount, skippedCount };
+
     const statements: { sql: string; params?: unknown[] }[] = [];
 
     for (const r of chunk) {
@@ -412,6 +418,17 @@ export async function executeCsvImport(
       try {
         await db.batch(statements);
       } catch (err) {
+        maps.forEach((map, index) => {
+          map.clear();
+          savedMaps[index]!.forEach((value, key) => map.set(key, value));
+        });
+        barcodeVariantMap.clear();
+        savedBarcodes.forEach((value, key) => barcodeVariantMap.set(key, value));
+        productVariantMap.clear();
+        savedVariants.forEach((value, key) => productVariantMap.set(key, value));
+        importedCount = counts.importedCount;
+        updatedCount = counts.updatedCount;
+        skippedCount = counts.skippedCount;
         // Batches are atomic: nothing from this chunk was written. Record the
         // failure and continue with later chunks; re-running the whole import
         // is deterministic because already-written rows match as existing.

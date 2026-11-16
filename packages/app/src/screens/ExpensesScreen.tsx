@@ -40,8 +40,8 @@ export function ExpensesScreen() {
       setShop(activeShop);
 
       // Sync attribution needs THIS device, not the shop's creating device.
-      const devices = await new DeviceRepo(db).getDevices(activeShop.id);
-      if (devices[0]) setDeviceId(devices[0].id);
+      const device = await new DeviceRepo(db).getActiveDevice(activeShop.id);
+      setDeviceId(device?.id ?? null);
 
       const expenseRepo = new ExpenseRepo(db);
       const list = await expenseRepo.getAll(activeShop.id);

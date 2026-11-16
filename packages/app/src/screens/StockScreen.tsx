@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
-import { StockRepo, ShopRepo, ProductRepo } from '@vaporflow/core';
+import { StockRepo, ShopRepo, ProductRepo, DeviceRepo } from '@vaporflow/core';
 import type { Shop, StockMovement } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
@@ -22,6 +22,8 @@ interface InventoryItem {
 
 export function StockScreen() {
   const db = useDb();
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const savingRef = useRef(false);
   const [shop, setShop] = useState<Shop | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'low' | 'out' | 'negative'>('all');
@@ -60,6 +62,7 @@ export function StockScreen() {
       const activeShop = await shopRepo.getActiveShop();
       if (!activeShop) return;
       setShop(activeShop);
+      setDeviceId((await new DeviceRepo(db).getActiveDevice(activeShop.id))?.id ?? null);
 
       const items = await stockRepo.getInventoryList(activeShop.id, filter, search);
       setInventory(items);
@@ -118,7 +121,8 @@ export function StockScreen() {
 
   async function handleSaveStockIn(e: React.FormEvent) {
     e.preventDefault();
-    if (!shop) return;
+    if (!shop || savingRef.current) return;
+    if (!deviceId) { setError('No active device registered.'); return; }
     setError('');
     setSuccess('');
 
@@ -156,9 +160,10 @@ export function StockScreen() {
     }
 
     try {
+      savingRef.current = true;
       const stockRepo = new StockRepo(db);
       const now = new Date().toISOString();
-      await stockRepo.stockIn(shop.id, parsedItems, shop.device_id, now);
+      await stockRepo.stockIn(shop.id, parsedItems, deviceId, now);
       notifyStockChanged();
       setSuccess(`Stock In recorded: ${parsedItems.length} item${parsedItems.length === 1 ? '' : 's'}.`);
       setStockInOpen(false);
@@ -166,7 +171,7 @@ export function StockScreen() {
     } catch (err) {
       globalErrorLogger.log(err);
       setError(err instanceof Error ? err.message : 'Failed to record stock in');
-    }
+    } finally { savingRef.current = false; }
   }
 
   function handleOpenAdjust(item: InventoryItem) {
@@ -181,7 +186,8 @@ export function StockScreen() {
 
   async function handleSaveAdjustment(e: React.FormEvent) {
     e.preventDefault();
-    if (!shop) return;
+    if (!shop || savingRef.current) return;
+    if (!deviceId) { setError('No active device registered.'); return; }
     setError('');
     setSuccess('');
 
@@ -191,6 +197,7 @@ export function StockScreen() {
     }
 
     try {
+      savingRef.current = true;
       const stockRepo = new StockRepo(db);
       const now = new Date().toISOString();
       const counted = parseInt(adjustCountedQty, 10);
@@ -198,7 +205,7 @@ export function StockScreen() {
         throw new Error('Counted quantity must be a non-negative whole number.');
       }
 
-      await stockRepo.adjustStock(shop.id, adjustVariantId, counted, adjustNote.trim(), shop.device_id, now);
+      await stockRepo.adjustStock(shop.id, adjustVariantId, counted, adjustNote.trim(), deviceId, now);
       notifyStockChanged();
       setSuccess('Stock adjustment recorded successfully.');
       setAdjustOpen(false);
@@ -206,7 +213,7 @@ export function StockScreen() {
     } catch (err) {
       globalErrorLogger.log(err);
       setError(err instanceof Error ? err.message : 'Failed to record adjustment');
-    }
+    } finally { savingRef.current = false; }
   }
 
   async function handleOpenHistory(item: InventoryItem) {
