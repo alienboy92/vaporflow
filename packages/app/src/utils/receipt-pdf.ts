@@ -12,7 +12,7 @@ export const RECEIPT_PDF_WIDTH_PT = Math.round((80 * 72 * 100) / 25.4) / 100; //
 const MARGIN = 10;
 const LINE_HEIGHT = 11;
 
-interface PdfLine {
+export interface PdfLine {
   text: string;
   align: 'left' | 'center' | 'right';
   bold: boolean;
@@ -103,7 +103,10 @@ export function buildReceiptPdfLines(sale: Sale, items: SaleItem[], shop: Shop):
  * Layout is fixed-width Courier so amounts right-align exactly.
  */
 export function buildReceiptPdf(sale: Sale, items: SaleItem[], shop: Shop): Uint8Array {
-  const contentLines = buildReceiptPdfLines(sale, items, shop);
+  return buildTextReceiptPdf(buildReceiptPdfLines(sale, items, shop));
+}
+
+export function buildTextReceiptPdf(contentLines: PdfLine[]): Uint8Array {
   const widthPt = RECEIPT_PDF_WIDTH_PT;
   const heightPt = Math.round((contentLines.length * LINE_HEIGHT + MARGIN * 2) * 100) / 100;
 

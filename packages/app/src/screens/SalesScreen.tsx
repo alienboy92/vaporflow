@@ -12,10 +12,13 @@ import {
 import type { Shop, Sale, SaleItem, Return, ReturnItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { ReturnReceiptModal } from '../components/ReturnReceiptModal';
+import type { ReturnReceipt } from '../utils/return-receipt';
 import { ReceiptModal } from '../components/ReceiptModal';
 
 export function SalesScreen() {
   const db = useDb();
+  const [returnReceipt, setReturnReceipt] = useState<ReturnReceipt | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -52,8 +55,8 @@ export function SalesScreen() {
       if (!activeShop) return;
       setShop(activeShop);
 
-      const devices = await deviceRepo.getDevices(activeShop.id);
-      if (devices[0]) setDeviceId(devices[0].id);
+      const device = await deviceRepo.getActiveDevice(activeShop.id);
+      setDeviceId(device?.id ?? null);
 
       const allSales = await saleRepo.getSales(activeShop.id);
       setSales(allSales);
@@ -172,7 +175,7 @@ export function SalesScreen() {
       const movementIds = linesToReturn.map(() => uuidv7());
       const nowIso = new Date().toISOString();
 
-      await returnRepo.processReturn(
+      const result = await returnRepo.processReturn(
         {
           shop_id: shop.id,
           device_id: deviceId,
@@ -188,6 +191,7 @@ export function SalesScreen() {
         nowIso,
       );
 
+      setReturnReceipt({ ...result, sale: returningSale.sale, saleItems: returningSale.items });
       setReturningSale(null);
       // A restocking return writes stock movements: refresh the badge now.
       notifyStockChanged();
@@ -379,6 +383,14 @@ export function SalesScreen() {
                         >
                           View / Reprint
                         </button>
+                        {rets.map((ret, index) => <button key={ret.id} className="min-h-11 px-3 border rounded" onClick={() => void (async () => {
+                          try {
+                            const original = await new SaleRepo(db).getSaleById(sale.id);
+                            if (!original) throw new Error('Original sale missing');
+                            const items = [...returnItemsMap.values()].flat().filter((item) => item.return_id === ret.id);
+                            setReturnReceipt({ ret, items, sale: original.sale, saleItems: original.items });
+                          } catch (err) { setError(err instanceof Error ? err.message : 'Could not load return receipt'); }
+                        })()}>Return receipt {index + 1}</button>)}
                         <button
                           onClick={() => void openReturnModal(sale)}
                           className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-medium min-h-11 inline-flex items-center"
@@ -395,6 +407,7 @@ export function SalesScreen() {
         </div>
       </div>
 
+      {returnReceipt && shop && <ReturnReceiptModal result={returnReceipt} shop={shop} onClose={() => setReturnReceipt(null)} />}
       {/* Receipt Modal */}
       {selectedSaleResult && shop && (
         <ReceiptModal

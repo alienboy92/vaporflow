@@ -182,12 +182,16 @@ export class ReportRepo {
     const events = schema.array().parse(
       await this.db.query(
         `SELECT s.sold_at AS at, s.total AS revenue,
-         s.total - COALESCE((SELECT SUM(qty * unit_cost) FROM sale_items WHERE sale_id = s.id), 0) AS profit
-       FROM sales s WHERE s.shop_id = ? AND s.sold_at BETWEEN ? AND ?
+         s.total - COALESCE(costs.total, 0) AS profit
+       FROM sales s LEFT JOIN (
+         SELECT sale_id, SUM(qty * unit_cost) AS total FROM sale_items GROUP BY sale_id
+       ) costs ON costs.sale_id = s.id WHERE s.shop_id = ? AND s.sold_at BETWEEN ? AND ?
        UNION ALL
        SELECT r.returned_at AS at, -r.refund_amount AS revenue,
-         -r.refund_amount + COALESCE((SELECT SUM(qty * unit_cost) FROM return_items WHERE return_id = r.id AND restocked = 1), 0) AS profit
-       FROM returns r WHERE r.shop_id = ? AND r.returned_at BETWEEN ? AND ?`,
+         -r.refund_amount + COALESCE(costs.total, 0) AS profit
+       FROM returns r LEFT JOIN (
+         SELECT return_id, SUM(qty * unit_cost) AS total FROM return_items WHERE restocked = 1 GROUP BY return_id
+       ) costs ON costs.return_id = r.id WHERE r.shop_id = ? AND r.returned_at BETWEEN ? AND ?`,
         [shopId, startStr, endStr, shopId, startStr, endStr],
       ),
     );
