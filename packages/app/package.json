@@ -13,6 +13,7 @@
     "build:diagnostics": "vite build --mode diagnostics"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "@vaporflow/core": "workspace:*",
     "@vaporflow/mobile": "workspace:*",
     "react": "^18.3.1",

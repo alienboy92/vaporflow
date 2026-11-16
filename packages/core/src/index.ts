@@ -29,3 +29,4 @@ export * from './repositories/device.js';
 export * from './pin.js';
 export * from './csv-import.js';
 export * from './backup.js';
+export * from './sync/index.js';
