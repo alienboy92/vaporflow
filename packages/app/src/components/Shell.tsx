@@ -13,6 +13,8 @@ import { LockScreen } from './LockScreen';
 import { useSecurity } from './use-security';
 import { globalErrorLogger } from '../utils/logger';
 import { STOCK_CHANGED_EVENT } from '../utils/stock-events';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 
 export function Shell() {
   const db = useDb();
@@ -22,6 +24,33 @@ export function Shell() {
   const security = useSecurity();
 
   const [moreOpen, setMoreOpen] = useState(false);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      let handle: { remove: () => void } | undefined;
+      void App.addListener('backButton', ({ canGoBack }) => {
+        if (moreOpen) {
+          setMoreOpen(false);
+          return;
+        }
+        if (security.locked) {
+          return;
+        }
+        if (location.pathname === '/') {
+          if (window.confirm('Abandon active sale?')) {
+            window.history.back();
+          }
+        } else if (canGoBack) {
+          window.history.back();
+        }
+      }).then((h) => {
+        handle = h;
+      });
+      return () => {
+        handle?.remove();
+      };
+    }
+  }, [moreOpen, security.locked, location.pathname]);
 
   useEffect(() => {
     let active = true;

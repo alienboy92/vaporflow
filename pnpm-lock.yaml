@@ -72,9 +72,15 @@ importers:
       '@capacitor-community/sqlite':
         specifier: 6.0.2
         version: 6.0.2(@capacitor/core@6.2.3)
+      '@capacitor-mlkit/barcode-scanning':
+        specifier: ^6.2.0
+        version: 6.2.0(@capacitor/core@6.2.3)
       '@capacitor/android':
         specifier: ^6.2.0
         version: 6.2.3(@capacitor/core@6.2.3)
+      '@capacitor/app':
+        specifier: ^6.0.3
+        version: 6.0.3(@capacitor/core@6.2.3)
       '@capacitor/cli':
         specifier: ^6.2.0
         version: 6.2.3
@@ -100,6 +106,12 @@ importers:
 
   packages/app:
     dependencies:
+      '@capacitor/app':
+        specifier: ^6.0.0
+        version: 6.0.3(@capacitor/core@6.2.3)
+      '@capacitor/core':
+        specifier: ^6.2.0
+        version: 6.2.3
       '@supabase/supabase-js':
         specifier: ^2.119.0
         version: 2.119.0
@@ -289,10 +301,20 @@ packages:
     peerDependencies:
       '@capacitor/core': ^6.0.0
 
+  '@capacitor-mlkit/barcode-scanning@6.2.0':
+    resolution: {integrity: sha512-XnnErDabpCUty9flugqB646ERejCxrtKcKOJrdoh9ZVLTQXUnyjxUDWOlqHVxrBHy+e86ZgpZX7D5zcaNvS0lQ==}
+    peerDependencies:
+      '@capacitor/core': ^6.0.0
+
   '@capacitor/android@6.2.3':
     resolution: {integrity: sha512-1x7HUUy5XdQUmAwkMcI8qz0pAmSDXGHVq0XVdCvFswqbE74VGxRuGeo7hUGcgQUWkmqXkVWzMSlAm3Z8NrmQjA==}
     peerDependencies:
       '@capacitor/core': ^6.2.0
+
+  '@capacitor/app@6.0.3':
+    resolution: {integrity: sha512-4gFUCbcVz0N/YYN32OBFerocWXslIv3Nc90gDiRsBkJc0plwK6kIUT6PKa5WtW2kfhteUeCVXQbvArH2fH+0Ug==}
+    peerDependencies:
+      '@capacitor/core': ^6.0.0
 
   '@capacitor/cli@6.2.3':
     resolution: {integrity: sha512-jqmqpe8K/kdw2/imsii+taG7qsv0bbYKsxwrOfcgPpm+omxBGg4j81Hf9FIvlxB3zV2EAORPBKeUfCkkV+o83A==}
@@ -3911,7 +3933,15 @@ snapshots:
       '@capacitor/core': 6.2.3
       jeep-sqlite: 2.8.0
 
+  '@capacitor-mlkit/barcode-scanning@6.2.0(@capacitor/core@6.2.3)':
+    dependencies:
+      '@capacitor/core': 6.2.3
+
   '@capacitor/android@6.2.3(@capacitor/core@6.2.3)':
+    dependencies:
+      '@capacitor/core': 6.2.3
+
+  '@capacitor/app@6.0.3(@capacitor/core@6.2.3)':
     dependencies:
       '@capacitor/core': 6.2.3
 

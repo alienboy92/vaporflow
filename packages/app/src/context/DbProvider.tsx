@@ -34,7 +34,7 @@ async function shareFileDesktop(name: string, data: Uint8Array | string, mime: s
 }
 
 async function initialize(): Promise<PlatformAdapters> {
-  let database: Pick<PlatformAdapters, 'db' | 'diagnostics' | 'platform' | 'share'>;
+  let database: Pick<PlatformAdapters, 'db' | 'diagnostics' | 'platform' | 'share' | 'scanner'>;
   if (window.vaporflow?.platform === 'desktop') {
     const api = window.vaporflow;
     database = {
@@ -49,6 +49,9 @@ async function initialize(): Promise<PlatformAdapters> {
       },
       share: {
         shareFile: (name, data, mime) => shareFileDesktop(name, data, mime),
+      },
+      scanner: {
+        scanWithCamera: () => unsupported('Camera scanning'),
       },
       diagnostics: api.diagnostics
         ? {
@@ -94,7 +97,10 @@ async function initialize(): Promise<PlatformAdapters> {
       exportBackup: () => unsupported('Backup export'),
       importBackup: () => unsupported('Backup import'),
     },
-    scanner: { scanWithCamera: () => unsupported('Camera scanning') },
+    scanner:
+      database.scanner ?? {
+        scanWithCamera: () => unsupported('Camera scanning'),
+      },
   };
 }
 export function DbProvider({ children }: { children: ReactNode }) {
