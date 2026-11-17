@@ -34,10 +34,16 @@ Updated 17 November 2026. Scope: camera scanner, OTG scanner, mobile finishing. 
 
 ## Remaining acceptance (hardware)
 
+**On-device session, 17 November 2026** (Samsung Galaxy A05s, Android 15, over Wi-Fi wireless debugging): verified live — camera permission prompt appears and camera scan works after granting; denied permission shows the red "Camera permission was denied…" alert (see the bug below); wedge toggle switches to `inputMode="none"` and the soft keyboard does not appear on the focused scan field; the wedge preference persists across screens (Sale → Products modal header shows the Scanner toggle); Back closes the Create Product modal, then navigates back to the Sale screen, then minimizes at the sale root with no prompt (empty cart); relaunching after minimize shows the PIN lock screen.
+
+**Bug found by the walkthrough, fixed**: the `@capacitor-mlkit/barcode-scanning` plugin ships an empty Android manifest, so `android.permission.CAMERA` was never declared in the generated app manifest — Android instant-denied the request with no dialog and the UI silently did nothing. Fixed by declaring the permission and by the adapter throwing a visible error on denial instead of returning `null`; because `apps/mobile/android` is git-ignored and regenerated, `scripts/android.ps1` now patches the permission in idempotently on every run (verified by a strip-and-repatch round-trip).
+
 NOT RUN — needs a physical Android phone with a camera and a USB-OTG scanner:
 
-- Scan 20 different barcodes by camera and by OTG wedge; repeated scans, cancellation, denied permission, background/resume.
-- Phone walkthrough at 390×844: setup, products, stock, sale, receipt/share, return, expense/report, backup, sync problems — including the wedge toggle's soft-keyboard suppression and the back-button dialog stack on-device.
+- The full 20-barcode camera scan sweep and repeated scans, background/resume mid-scan, and cancellation from the scanner UI.
+- A real USB-OTG scanner typing into the wedge-mode field (suppression is verified; the scanner itself is not).
+- Back-button confirm on a sale root with cart items (needs a product in the catalog first).
+- The complete phone walkthrough at 390×844: setup, products, stock, sale, receipt/share, return, expense/report, backup, sync problems.
 - The Phase 2–8 device checks also remain pending.
 
 ## Known issues / notes
