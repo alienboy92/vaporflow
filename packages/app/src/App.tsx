@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { DbProvider, useDb } from './context/DbProvider';
+import { CloudSyncProvider } from './context/CloudSyncProvider';
 import { ShopRepo } from '@vaporflow/core';
 import { SetupWizard } from './screens/SetupWizard';
 import { Shell } from './components/Shell';
@@ -63,7 +64,9 @@ function AppRoot() {
 export function App() {
   return (
     <DbProvider>
-      <AppRoot />
+      <CloudSyncProvider>
+        <AppRoot />
+      </CloudSyncProvider>
     </DbProvider>
   );
 }

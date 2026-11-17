@@ -14,6 +14,7 @@ import {
 import type { Shop, Variant, Sale, SaleItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { useCloudSync } from '../context/CloudSyncProvider';
 import { ReceiptModal } from '../components/ReceiptModal';
 
 interface CartLine {
@@ -29,6 +30,7 @@ interface CartLine {
 
 export function SaleScreen() {
   const db = useDb();
+  const saleCompleted = useCloudSync().saleCompleted;
   const navigate = useNavigate();
   const [shop, setShop] = useState<Shop | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -195,6 +197,8 @@ export function SaleScreen() {
       const result = await saleRepo.completeSale(input, saleId, itemIds, movementIds, nowIso);
       setCompletedResult(result);
       notifyStockChanged();
+      // Debounced cloud sync trigger; a no-op when cloud is not connected.
+      saleCompleted();
       setCart([]);
       setDiscountInput('0');
       setDiscountPercentInput('0');
@@ -209,7 +213,7 @@ export function SaleScreen() {
       completingRef.current = false;
       setCompleting(false);
     }
-  }, [shop, deviceId, cart, paymentMethod, amountReceivedInput, note, db, computeTotals, loadCatalog]);
+  }, [shop, deviceId, cart, paymentMethod, amountReceivedInput, note, db, computeTotals, loadCatalog, saleCompleted]);
 
   // Keyboard shortcuts: F2 (focus scan), F9 (complete sale), Esc (clear cart)
   useEffect(() => {

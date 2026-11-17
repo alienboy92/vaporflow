@@ -47,4 +47,72 @@ describe('Supabase Client and Transport (Phase 8B)', () => {
       p_limit: 100,
     });
   });
+
+  // --- Error paths: the engine's batch-atomic rejection and backoff depend
+  // on these throwing instead of returning garbage. ---
+
+  it('push throws when the rpc returns an error', async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({ data: null, error: { message: 'push rejected' } }),
+    } as unknown as SupabaseClient;
+    const transport = new SupabaseSyncTransport(mockClient);
+    await expect(transport.push('categories', [{ id: '1' }])).rejects.toThrow('push rejected');
+  });
+
+  it('pull throws when the rpc returns an error', async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({ data: null, error: { message: 'pull rejected' } }),
+    } as unknown as SupabaseClient;
+    const transport = new SupabaseSyncTransport(mockClient);
+    await expect(transport.pull('sales', 'shop-1', null, null, 500)).rejects.toThrow('pull rejected');
+  });
+
+  it('claimShop throws when the rpc returns an error', async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({ data: null, error: { message: 'claim denied by rpc' } }),
+    } as unknown as SupabaseClient;
+    await expect(claimShop(mockClient, '00000000-0000-7000-0000-000000000001')).rejects.toThrow(
+      'claim denied by rpc',
+    );
+  });
+
+  it('claimShop returns false when the rpc reports no membership', async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+    } as unknown as SupabaseClient;
+    await expect(claimShop(mockClient, '00000000-0000-7000-0000-000000000001')).resolves.toBe(
+      false,
+    );
+  });
+
+  it('push rejects invalid table names before any rpc call', async () => {
+    const mockClient = { rpc: vi.fn() } as unknown as SupabaseClient;
+    const transport = new SupabaseSyncTransport(mockClient);
+    await expect(transport.push('not_a_table', [{ id: '1' }])).rejects.toThrow('Invalid table');
+    expect(mockClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it('push rejects oversized batches before any rpc call', async () => {
+    const mockClient = { rpc: vi.fn() } as unknown as SupabaseClient;
+    const transport = new SupabaseSyncTransport(mockClient);
+    const rows = Array.from({ length: 201 }, () => ({ id: '1' }));
+    await expect(transport.push('sales', rows)).rejects.toThrow('at most 200');
+    expect(mockClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it('pull rejects invalid limits before any rpc call', async () => {
+    const mockClient = { rpc: vi.fn() } as unknown as SupabaseClient;
+    const transport = new SupabaseSyncTransport(mockClient);
+    await expect(transport.pull('sales', 'shop-1', null, null, 501)).rejects.toThrow();
+    await expect(transport.pull('sales', 'shop-1', null, null, 0)).rejects.toThrow();
+    expect(mockClient.rpc).not.toHaveBeenCalled();
+  });
+
+  it('pull returns an empty array when the rpc data is not an array', async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
+    } as unknown as SupabaseClient;
+    const transport = new SupabaseSyncTransport(mockClient);
+    await expect(transport.pull('sales', 'shop-1', null, null, 500)).resolves.toEqual([]);
+  });
 });

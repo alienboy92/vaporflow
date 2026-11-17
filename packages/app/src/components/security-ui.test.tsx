@@ -10,6 +10,9 @@ import type { ReactNode } from 'react';
 const state = vi.hoisted(() => ({ db: { query: vi.fn() }, values: {} as Record<string, string> }));
 vi.mock('../context/DbProvider', () => ({
   useDb: () => state.db,
+  usePlatform: () => ({
+    network: { isOnline: () => true, onChange: () => () => {} },
+  }),
   DbProvider: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock('../screens/SettingsScreen', () => ({

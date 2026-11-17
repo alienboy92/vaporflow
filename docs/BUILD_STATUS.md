@@ -1,20 +1,24 @@
 # VaporFlow — Build Status
 
-Updated 16 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS.md).
+Updated 17 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS.md).
 
-## Current decision — 16 November 2026
+## Current decision — 17 November 2026
 
-**READY FOR LIVE DEPLOYMENT CHECK — Phase 8B (Auth, Cloud Enrollment, and Supabase Integration) is fully implemented and verified with automated tests.**
+**READY FOR LIVE DEPLOYMENT CHECK — Phase 8B (Auth, Cloud Enrollment, and Supabase Integration) implementation and review repairs are complete; all automated checks pass. Live hosted checks remain NOT RUN.**
 
-- Phase 8B Supabase Integration & Auth (`packages/core/src/sync/`, `packages/app/src/screens/SettingsScreen.tsx`):
-  - `@supabase/supabase-js` client wrapper (`createVaporFlowSupabaseClient`) and RPC transport (`SupabaseSyncTransport`).
-  - Auth integration: Email/password sign-up, sign-in, session persistence, sign-out, and pending-confirmation handling.
-  - Shop claiming and enrollment: `claim_shop` RPC integration, pushing local shop data, joining existing shops.
-  - Settings UI: Cloud & Sync panel with Supabase credentials configuration, auth controls, cloud claim action, live sync status (`synced`, `pending`, `offline`, `error`), pending count, last sync time, "Sync Now", and actionable sync problems list.
-  - Documentation & config: `.env.example` placeholders (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) and `docs/SUPABASE_SETUP.md` (migration guidelines, security rules against replaying initial schema over deployed DBs, email confirmation handling).
-  - Tests: 138 automated tests passing (including new Supabase client/transport/claim unit tests and 19 sync engine tests). Live cloud connection and cross-device synchronization on hosted Supabase remain pending live deployment authorization (READY FOR HARDWARE/LIVE CHECK).
+Phase 8B as first built was **BLOCKED** by independent review (8 findings; [Phase 8B review](PHASE8B_REVIEW.md)). Repairs applied:
 
-- Next action: Phase 9 (Camera, OTG scanner, mobile finishing).
+- **App-lifetime cloud session** (`packages/app/src/context/CloudSyncProvider.tsx`): exactly ONE `@supabase/supabase-js` client and at most ONE `SyncEngine` per app run — created once, `start()`ed on connect/restore, `stop()`ed on sign-out/config change/unmount (no orphaned engines or per-click clients breaking `autoRefreshToken`). Status polled every 5 s so the Settings badge stays live.
+- **Sync triggers wired**: `saleCompleted()` fires from the sale screen after `completeSale`; app-start, network-return, and interval triggers come from the engine's `start()`. Previously the engine never ran autonomously in the app.
+- **Session/enrollment restore on app start**: persisted `supabase_url`/`supabase_anon_key`/`cloud_enrolled_shop_id`, `auth.getSession()`, and automatic engine restart for an enrolled device with a live session (interrupted-enrollment recovery).
+- **Second-device enrollment built** (`packages/core/src/sync/enrollment.ts` + first-run wizard "Join an existing shop" tab): empty-device guard, read-only shop probe BEFORE `claim_shop` (claim would silently create a placeholder shop for a typo'd ID), membership claim, random device code unique against CLOUD device codes, full pull with null cursors, receipt-counter recovery (max last-used, Phase 5 convention), device code shown after joining. Rejected on non-empty devices and while offline.
+- **Setup wizard join flow**: new-shop / join-shop mode toggle replacing the disabled placeholder; ref-based double-submit guard; `busy`-aware buttons.
+- **Settings cloud panel** rebuilt on the provider context: credential save with https/placeholder validation, auth actions with surfaced errors, claim action, Shop ID display + copy button (for second devices), registered-devices list, honest status from polling.
+- **Tests**: 152 passing (was 138) + 2 skipped — new Supabase transport error-path tests (RPC errors throw, non-array pull data → `[]`, arg validation before RPC) and 6 second-device enrollment tests against two real SQLite databases (unique code vs cloud, full pull, counter recovery = max last-used, empty-device guard, offline guard, interrupted-retry device reuse). Lint, typecheck, and app build pass.
+
+Still NOT RUN (by design, pending live deployment authorization): live hosted Supabase Auth/RPC checks, real second-device enrollment over the network, authorization denial with a non-member account, enrollment retries against the hosted server, offline convergence on two devices, session expiry handling. See the review doc.
+
+- Next action: authorize the live deployment for 8B acceptance, or proceed to Phase 9 (Camera, OTG scanner, mobile finishing).
 
 ## Completed baseline (historical phase records)
 
@@ -29,7 +33,7 @@ Updated 16 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS
 | 6 — History/reports| READY FOR HARDWARE CHECK       | Sales history list newest first, receipt search, date filter, per-day totals, detail/reprint receipt modal; return lines/quantities bounded by remaining sold quantity, restock/no-restock, cash/online refund, return receipt with core atomic batch & limit guard; expense list/add/edit/soft-delete with validated date, amount, category, note; P&L report cards, top-10 tables (qty and profit), daily series Recharts trend chart with presets (Today, Yesterday, Last 7 days, This month, Last month) and custom dates; review repairs: repository-backed (zod-validated) return reads instead of raw SQL in the UI, in-modal return errors, stock-badge refresh after restocking returns, current-device attribution and double-submit ref guard on expenses, honest 50-sale smoke benchmark plus opt-in `VAPORFLOW_BENCH=1` 1,000-sale benchmark (NOT RUN), all nine P&L fields and full return/no-restock/stock-ledger coverage asserted, unused `react-day-picker` removed, dead `PlaceholderScreens.tsx` deleted; 96 tests (17 files) + 1 skipped opt-in benchmark; [Phase 6 review](PHASE6_REVIEW.md). |
 | 7 — Import/recovery| READY FOR HARDWARE CHECK       | CSV import with Papaparse & Zod, template generation, preview & error detection, duplicate barcode checks, chunked batches (200 rows), skip/update price strategies, and opening stock idempotence; settings backup export (`.vfbackup`) and validation/restore with transaction safety and counter recovery; 105 automated tests; [Phase 7 review](PHASE7_REVIEW.md). |
 | 8A — Sync engine   | READY (local simulation)       | Transport boundary (`SyncTransport`, RPC-faithful `SQLiteSyncServer`), push/pull engine (`SyncEngine`), 5s overlap cursor pagination, dependency-ordered push, strict-LWW mutable / idempotent ledger handling, PG↔local wire conversion (booleans, 3ms timestamps, no `dirty` over the wire), batch-atomic rejection with surfaced `lastError`/problems, conditional atomic dirty-clears; 15 sync tests (two-device convergence, backoff retry, in-flight edits, page rollback, overlap re-pull, >500-row catch-up, tombstones, timestamp ties) + 6 conversion unit tests + PGlite RPC coverage; [Phase 8A review](PHASE8A_REVIEW.md). Live Supabase device checks deferred to 8B. |
-| 8B — Auth & Cloud  | READY FOR LIVE CHECK           | Supabase client wrapper, RPC transport, email/password Auth flows, shop claiming, Settings UI cloud panel with sync status, errors, sync now, and problems list; 138 automated tests passing; hosted live multi-connection tests pending live deployment. |
+| 8B — Auth & Cloud  | READY FOR LIVE CHECK (repairs applied) | App-lifetime cloud session/provider with ONE client + ONE engine, autonomous sync triggers (post-sale, interval, network return, app start), session/enrollment restore on restart, second-device join flow (probe → claim → unique device code → full pull → counter recovery), Settings cloud panel on polled context state, error-path + enrollment tests; 152 tests passing + 2 skipped; [Phase 8B review](PHASE8B_REVIEW.md). Live hosted multi-device checks pending deployment authorization (NOT RUN). |
 
 ## Remaining work
 

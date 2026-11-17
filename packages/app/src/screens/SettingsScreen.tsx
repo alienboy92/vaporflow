@@ -8,12 +8,9 @@ import {
   exportBackupJson,
   validateBackupJson,
   restoreBackup,
-  createVaporFlowSupabaseClient,
-  claimShop,
-  SupabaseSyncTransport,
-  SyncEngine,
 } from '@vaporflow/core';
-import type { Shop, Device, VfBackup, SyncState } from '@vaporflow/core';
+import type { Shop, Device, VfBackup } from '@vaporflow/core';
+import { useCloudSync } from '../context/CloudSyncProvider';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
 import { DbCheck } from './DbCheck';
@@ -45,27 +42,17 @@ export function SettingsScreen() {
   const [restoring, setRestoring] = useState(false);
   const restoringRef = useRef(false);
 
-  // Cloud & Sync state
-  const [supabaseUrl, setSupabaseUrl] = useState(
-    import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co',
-  );
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(
-    import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key',
-  );
+  // Cloud & Sync state — session/engine/status live in CloudSyncProvider;
+  // only the form inputs and transient messages are local here.
+  const sync = useCloudSync();
+  const [supabaseUrl, setSupabaseUrl] = useState('');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
   const [cloudMessage, setCloudMessage] = useState('');
   const [cloudError, setCloudError] = useState('');
-  const [syncState, setSyncState] = useState<SyncState>({
-    status: 'offline',
-    pendingCount: 0,
-    lastSuccessAt: null,
-    lastError: null,
-    problems: [],
-    isSyncing: false,
-  });
-  const syncEngineRef = useRef<SyncEngine | null>(null);
+  const [copiedShopId, setCopiedShopId] = useState(false);
+  const [devices, setDevices] = useState<Device[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -79,7 +66,10 @@ export function SettingsScreen() {
         ? await deviceRepo.getDevice(allSettings['active_device_id'])
         : undefined;
 
-      if (activeShop) setShop(activeShop);
+      if (activeShop) {
+        setShop(activeShop);
+        setDevices(await deviceRepo.getDevices(activeShop.id));
+      }
       if (activeDevice) setDevice(activeDevice);
       setSettings(allSettings);
     } catch (err) {
@@ -93,6 +83,29 @@ export function SettingsScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Wraps every cloud action so errors land in the panel instead of vanishing.
+  async function runCloudAction(action: () => Promise<void>, successMessage?: string) {
+    setCloudError('');
+    setCloudMessage('');
+    try {
+      await action();
+      if (successMessage) setCloudMessage(successMessage);
+    } catch (err: unknown) {
+      setCloudError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleCopyShopId() {
+    if (!shop) return;
+    try {
+      await navigator.clipboard.writeText(shop.id);
+      setCopiedShopId(true);
+      window.setTimeout(() => setCopiedShopId(false), 2000);
+    } catch {
+      setCloudError('Could not copy automatically; select the Shop ID text manually.');
+    }
+  }
 
   async function handleSaveShop(e: React.FormEvent) {
     e.preventDefault();
@@ -317,6 +330,24 @@ export function SettingsScreen() {
           Connect your local shop to Supabase to synchronize sales, inventory, and catalog across devices.
         </p>
 
+        {shop && (
+          <div className="p-3 bg-gray-50 border rounded text-sm flex items-center justify-between gap-3 max-w-lg">
+            <div className="min-w-0">
+              <span className="text-gray-500 block text-xs uppercase font-medium">
+                Shop ID — share with second devices
+              </span>
+              <span className="font-mono text-xs break-all">{shop.id}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleCopyShopId()}
+              className="shrink-0 rounded border border-gray-300 bg-white px-3 py-2 text-xs font-medium min-h-11 hover:bg-gray-100"
+            >
+              {copiedShopId ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+        )}
+
         {cloudError && (
           <div role="alert" className="p-3 bg-red-50 text-red-700 rounded text-sm border border-red-200">
             {cloudError}
@@ -350,7 +381,24 @@ export function SettingsScreen() {
             />
           </div>
 
-          {!authUserEmail ? (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={sync.busy}
+              onClick={() =>
+                void runCloudAction(
+                  () => sync.saveConfig(supabaseUrl, supabaseAnonKey),
+                  'Supabase configuration saved.',
+                )
+              }
+              className="rounded bg-blue-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-blue-800 disabled:opacity-50"
+            >
+              Save Configuration
+            </button>
+            {sync.configured && <span className="text-sm text-green-700 font-medium">Credentials saved ✓</span>}
+          </div>
+
+          {!sync.email ? (
             <div className="space-y-3 pt-2 border-t">
               <h3 className="font-medium text-gray-800">Cloud Authentication</h3>
               <div>
@@ -376,174 +424,139 @@ export function SettingsScreen() {
               <div className="flex gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={async () => {
-                    setCloudError('');
-                    setCloudMessage('');
-                    try {
-                      const client = createVaporFlowSupabaseClient(supabaseUrl, supabaseAnonKey);
-                      const { data, error } = await client.auth.signUp({
-                        email: authEmail,
-                        password: authPassword,
-                      });
-                      if (error) throw error;
-                      if (data.session) {
-                        setAuthUserEmail(data.session.user.email ?? authEmail);
-                        setCloudMessage('Sign up successful and signed in.');
-                      } else {
-                        setCloudMessage('Sign up successful. Please check your email for confirmation before signing in.');
-                      }
-                    } catch (err: unknown) {
-                      const msg = err instanceof Error ? err.message : String(err);
-                      setCloudError(msg);
-                    }
-                  }}
-                  className="rounded bg-gray-800 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-gray-900"
+                  disabled={sync.busy || !sync.configured}
+                  onClick={() =>
+                    void runCloudAction(async () => {
+                      const result = await sync.signUp(authEmail.trim(), authPassword);
+                      setCloudMessage(
+                        result === 'signed-in'
+                          ? 'Signed up and signed in.'
+                          : 'Sign up successful. Check your email for confirmation before signing in.',
+                      );
+                    })
+                  }
+                  className="rounded bg-gray-800 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-gray-900 disabled:opacity-50"
                 >
                   Sign Up
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
-                    setCloudError('');
-                    setCloudMessage('');
-                    try {
-                      const client = createVaporFlowSupabaseClient(supabaseUrl, supabaseAnonKey);
-                      const { data, error } = await client.auth.signInWithPassword({
-                        email: authEmail,
-                        password: authPassword,
-                      });
-                      if (error) throw error;
-                      if (data.session) {
-                        setAuthUserEmail(data.session.user.email ?? authEmail);
-                        setCloudMessage('Signed in successfully.');
-                      }
-                    } catch (err: unknown) {
-                      const msg = err instanceof Error ? err.message : String(err);
-                      setCloudError(msg);
-                    }
-                  }}
-                  className="rounded bg-blue-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-blue-800"
+                  disabled={sync.busy || !sync.configured}
+                  onClick={() =>
+                    void runCloudAction(
+                      () => sync.signIn(authEmail.trim(), authPassword),
+                      'Signed in successfully.',
+                    )
+                  }
+                  className="rounded bg-blue-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-blue-800 disabled:opacity-50"
                 >
                   Sign In
                 </button>
               </div>
+              {!sync.configured && (
+                <p className="text-xs text-amber-700">
+                  Save the Supabase URL and anon key above before signing in.
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-3 pt-2 border-t">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-700">
-                  Signed in as <strong className="text-gray-900">{authUserEmail}</strong>
+                  Signed in as <strong className="text-gray-900">{sync.email}</strong>
                 </span>
                 <button
                   type="button"
-                  onClick={async () => {
-                    try {
-                      const client = createVaporFlowSupabaseClient(supabaseUrl, supabaseAnonKey);
-                      await client.auth.signOut();
-                      setAuthUserEmail(null);
-                      setCloudMessage('Signed out.');
-                    } catch (err: unknown) {
-                      const msg = err instanceof Error ? err.message : String(err);
-                      setCloudError(msg);
-                    }
-                  }}
-                  className="text-sm text-red-600 underline font-medium"
+                  disabled={sync.busy}
+                  onClick={() => void runCloudAction(() => sync.signOut(), 'Signed out.')}
+                  className="text-sm text-red-600 underline font-medium disabled:opacity-50"
                 >
                   Sign Out
                 </button>
               </div>
 
-              {shop && (
+              {shop && !sync.enrolledShopId && (
                 <div className="pt-2">
                   <button
                     type="button"
-                    onClick={async () => {
-                      setCloudError('');
-                      setCloudMessage('');
-                      try {
-                        const client = createVaporFlowSupabaseClient(supabaseUrl, supabaseAnonKey);
-                        const claimed = await claimShop(client, shop.id);
-                        if (claimed) {
-                          setCloudMessage('Shop successfully claimed on Supabase cloud!');
-                          const transport = new SupabaseSyncTransport(client);
-                          const engine = new SyncEngine(db, transport, platform.network, shop.id);
-                          syncEngineRef.current = engine;
-                          await engine.syncNow();
-                          const status = await engine.getStatus();
-                          setSyncState(status);
-                        } else {
-                          setCloudError('Shop claim denied (already claimed by another account).');
-                        }
-                      } catch (err: unknown) {
-                        const msg = err instanceof Error ? err.message : String(err);
-                        setCloudError(msg);
-                      }
-                    }}
-                    className="w-full rounded bg-green-700 hover:bg-green-800 text-white px-5 py-3 font-medium min-h-11 shadow"
+                    disabled={sync.busy || !sync.configured}
+                    onClick={() =>
+                      void runCloudAction(
+                        () => sync.claimAndConnect(),
+                        'Shop claimed on Supabase — cloud sync is now running automatically.',
+                      )
+                    }
+                    className="w-full rounded bg-green-700 hover:bg-green-800 text-white px-5 py-3 font-medium min-h-11 shadow disabled:opacity-50"
                   >
-                    Connect Cloud & Claim Shop
+                    {sync.busy ? 'Working...' : 'Connect Cloud & Claim Shop'}
                   </button>
                 </div>
               )}
 
-              {/* Sync Status and Actions */}
-              <div className="pt-4 border-t space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Sync Status:</span>
-                  <span className={`font-bold px-2 py-0.5 rounded text-xs uppercase ${
-                    syncState.status === 'synced' ? 'bg-green-100 text-green-800' :
-                    syncState.status === 'pending' ? 'bg-amber-100 text-amber-800' :
-                    syncState.status === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {syncState.status} {syncState.pendingCount > 0 ? `(${syncState.pendingCount} pending)` : ''}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm text-gray-600">
-                  <span>Last Success:</span>
-                  <span className="font-mono">{syncState.lastSuccessAt ? new Date(syncState.lastSuccessAt).toLocaleTimeString() : 'Never'}</span>
-                </div>
-                {syncState.lastError && (
-                  <div className="p-2 bg-red-50 text-red-700 text-xs rounded border border-red-200">
-                    Error: {syncState.lastError}
+              {sync.enrolledShopId && (
+                <>
+                  <div className="flex items-center justify-between text-sm pt-2">
+                    <span className="text-gray-700">
+                      Connected to shop <span className="font-mono text-xs">{sync.enrolledShopId.slice(0, 8)}…</span>
+                    </span>
+                    <span className={`font-bold px-2 py-0.5 rounded text-xs uppercase ${
+                      sync.status.status === 'synced' ? 'bg-green-100 text-green-800' :
+                      sync.status.status === 'pending' ? 'bg-amber-100 text-amber-800' :
+                      sync.status.status === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {sync.status.status} {sync.status.pendingCount > 0 ? `(${sync.status.pendingCount} pending)` : ''}
+                    </span>
                   </div>
-                )}
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!shop) return;
-                      try {
-                        const client = createVaporFlowSupabaseClient(supabaseUrl, supabaseAnonKey);
-                        const transport = new SupabaseSyncTransport(client);
-                        const engine = new SyncEngine(db, transport, platform.network, shop.id);
-                        await engine.syncNow();
-                        const st = await engine.getStatus();
-                        setSyncState(st);
-                        setCloudMessage('Sync completed successfully.');
-                      } catch (err: unknown) {
-                        const msg = err instanceof Error ? err.message : String(err);
-                        setCloudError(msg);
+                  <div className="flex items-center justify-between text-sm text-gray-600">
+                    <span>Last Success:</span>
+                    <span className="font-mono">{sync.status.lastSuccessAt ? new Date(sync.status.lastSuccessAt).toLocaleString() : 'Never'}</span>
+                  </div>
+                  {sync.status.lastError && (
+                    <div className="p-2 bg-red-50 text-red-700 text-xs rounded border border-red-200">
+                      Error: {sync.status.lastError}
+                    </div>
+                  )}
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      disabled={sync.busy || sync.status.isSyncing}
+                      onClick={() =>
+                        void runCloudAction(() => sync.syncNow(), 'Sync completed successfully.')
                       }
-                    }}
-                    className="rounded bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 text-sm font-medium min-h-11"
-                  >
-                    Sync Now
-                  </button>
-                </div>
-
-                {syncState.problems.length > 0 && (
-                  <div className="pt-2 space-y-1">
-                    <h4 className="text-xs font-bold text-red-700 uppercase">Actionable Sync Problems</h4>
-                    {syncState.problems.map((p, idx) => (
-                      <div key={idx} className="p-2 bg-red-50 text-red-800 text-xs rounded border border-red-200 flex justify-between items-center">
-                        <div>
-                          <strong>{p.table}</strong> ({p.id.slice(0, 8)}...): {p.error}
-                        </div>
-                      </div>
-                    ))}
+                      className="rounded bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 text-sm font-medium min-h-11 disabled:opacity-50"
+                    >
+                      {sync.status.isSyncing ? 'Syncing...' : 'Sync Now'}
+                    </button>
                   </div>
-                )}
-              </div>
+
+                  {sync.status.problems.length > 0 && (
+                    <div className="pt-2 space-y-1">
+                      <h4 className="text-xs font-bold text-red-700 uppercase">Actionable Sync Problems</h4>
+                      {sync.status.problems.map((p, idx) => (
+                        <div key={idx} className="p-2 bg-red-50 text-red-800 text-xs rounded border border-red-200 flex justify-between items-center">
+                          <div>
+                            <strong>{p.table}</strong> ({p.id.slice(0, 8)}...): {p.error}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {devices.length > 0 && (
+                    <div className="pt-2 space-y-1">
+                      <h4 className="text-xs font-bold text-gray-700 uppercase">Registered Devices</h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        {devices.map((d) => (
+                          <div key={d.id} className="p-2 bg-gray-50 border rounded flex items-center gap-2">
+                            <span className="font-mono font-bold">{d.code}</span>
+                            <span className="text-gray-600 truncate">{d.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -607,7 +620,7 @@ export function SettingsScreen() {
         <h2 className="text-xl font-semibold text-gray-800">Application Information</h2>
         <div className="text-sm space-y-1 text-gray-600">
           <p>App Name: VaporFlow POS</p>
-          <p>Version: 1.0.0 (Phase 8B)</p>
+          <p>Version: 0.8.0 (development build)</p>
           <p>Platform: Desktop / Android</p>
         </div>
       </section>
