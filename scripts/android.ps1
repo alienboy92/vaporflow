@@ -4,6 +4,26 @@ param(
 )
 
 . "$PSScriptRoot/android-env.ps1"
+
+# @capacitor-mlkit/barcode-scanning ships an empty plugin manifest, so the app
+# must declare android.permission.CAMERA itself. apps/mobile/android is fully
+# generated (git-ignored; recreated by `cap add android`), so the declaration
+# is re-applied idempotently on every run of this script.
+function Ensure-CameraPermission {
+    $manifest = Join-Path $androidProject 'app/src/main/AndroidManifest.xml'
+    if (!(Test-Path $manifest)) { return }
+    $content = Get-Content $manifest -Raw
+    if ($content -match 'android\.permission\.CAMERA') { return }
+    $patched = $content -replace '(<uses-permission android:name="android\.permission\.INTERNET"\s*/>)', "`$1`r`n    <uses-permission android:name=`"android.permission.CAMERA`" />"
+    if ($patched -eq $content) {
+        Write-Host "WARN Could not patch $manifest - add <uses-permission android:name=`"android.permission.CAMERA`" /> manually."
+        return
+    }
+    Set-Content -Path $manifest -Value $patched -Encoding utf8 -NoNewline
+    Write-Host 'PATCH Added android.permission.CAMERA to the app manifest (required by @capacitor-mlkit/barcode-scanning).'
+}
+Ensure-CameraPermission
+
 $androidChecksPassed = $true
 function Write-AndroidCheck([bool]$Passed, [string]$Name, [string]$Detail, [string]$Fix) {
     if ($Passed) { Write-Host "PASS $Name - $Detail" }
@@ -18,6 +38,9 @@ Write-AndroidCheck ([bool]$androidJavaHome) 'Java 17 JDK' "$androidJavaHome" 'wi
 $sdkExists = $androidSdk -and (Test-Path $androidSdk)
 Write-AndroidCheck ([bool]$sdkExists) 'ANDROID_HOME' "$androidSdk (resolved for this process)" 'Install the Android SDK; set ANDROID_HOME or sdk.dir in apps/mobile/android/local.properties.'
 Write-AndroidCheck (Test-Path $androidVariables) 'Android project' "$androidProject" 'pnpm --filter @vaporflow/mobile exec cap add android'
+$manifestFile = Join-Path $androidProject 'app/src/main/AndroidManifest.xml'
+$manifestHasCamera = (Test-Path $manifestFile) -and ((Get-Content $manifestFile -Raw) -match 'android\.permission\.CAMERA')
+Write-AndroidCheck $manifestHasCamera 'Camera permission (manifest)' "$manifestFile" 'After cap add android, re-run scripts/android.ps1 - it patches the manifest automatically.'
 if ($sdkExists) {
     $platformInstalled = (Test-Path "$androidSdk/platforms/android-$androidCompileSdk/android.jar") -and (Test-Path "$androidSdk/platforms/android-$androidCompileSdk/package.xml")
     $buildToolsInstalled = (Test-Path "$androidSdk/build-tools/$androidBuildTools/aapt2.exe") -and (Test-Path "$androidSdk/build-tools/$androidBuildTools/package.xml")
