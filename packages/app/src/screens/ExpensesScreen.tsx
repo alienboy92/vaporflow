@@ -10,6 +10,7 @@ import {
 } from '@vaporflow/core';
 import type { Shop, Expense } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
+import { registerBackHandler } from '../utils/back-nav';
 
 const CATEGORIES = ['Rent', 'Utilities', 'Supplies', 'Salaries', 'Maintenance', 'Marketing', 'Miscellaneous'];
 
@@ -57,6 +58,15 @@ export function ExpensesScreen() {
   useEffect(() => {
     void loadExpenses();
   }, [loadExpenses]);
+
+  // Android back button: close the expense add/edit modal first.
+  useEffect(() => {
+    if (!modalOpen) return;
+    return registerBackHandler(() => {
+      setModalOpen(false);
+      return true;
+    });
+  }, [modalOpen]);
 
   function openAddModal() {
     setEditingExpenseId(null);

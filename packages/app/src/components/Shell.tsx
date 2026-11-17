@@ -15,6 +15,7 @@ import { globalErrorLogger } from '../utils/logger';
 import { STOCK_CHANGED_EVENT } from '../utils/stock-events';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { handleBackThroughDialogs, isSaleCartActive } from '../utils/back-nav';
 
 export function Shell() {
   const db = useDb();
@@ -26,30 +27,39 @@ export function Shell() {
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      let handle: { remove: () => void } | undefined;
-      void App.addListener('backButton', ({ canGoBack }) => {
-        if (moreOpen) {
-          setMoreOpen(false);
+    if (!Capacitor.isNativePlatform()) return;
+    let handle: { remove: () => void } | undefined;
+    void App.addListener('backButton', ({ canGoBack }) => {
+      // Locked: the lock screen owns the screen; back does nothing.
+      if (security.locked) return;
+      // Open dialogs first (LIFO registry: receipt, returns, restore, editors…).
+      if (handleBackThroughDialogs()) return;
+      if (moreOpen) {
+        setMoreOpen(false);
+        return;
+      }
+      // Sale root: confirm only when a cart actually holds items, then exit
+      // to the launcher (history.back() at the root would no-op).
+      if (location.pathname === '/') {
+        if (isSaleCartActive() && !window.confirm('Abandon this sale? The cart will be cleared.')) {
           return;
         }
-        if (security.locked) {
-          return;
-        }
-        if (location.pathname === '/') {
-          if (window.confirm('Abandon active sale?')) {
-            window.history.back();
-          }
-        } else if (canGoBack) {
-          window.history.back();
-        }
-      }).then((h) => {
-        handle = h;
-      });
-      return () => {
-        handle?.remove();
-      };
-    }
+        void App.minimizeApp();
+        return;
+      }
+      if (canGoBack) {
+        window.history.back();
+        return;
+      }
+      void App.minimizeApp();
+    }).then((h) => {
+      handle = h;
+    });
+    return () => {
+      handle?.remove();
+    };
+    // isSaleCartActive and the dialog registry are module state read at event
+    // time, so they need no effect deps.
   }, [moreOpen, security.locked, location.pathname]);
 
   useEffect(() => {

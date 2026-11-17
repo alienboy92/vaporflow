@@ -18,6 +18,8 @@ import {
 import type { Product, Variant, Category, Shop, ImportPreviewRow, ImportResult } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { registerBackHandler } from '../utils/back-nav';
+import { CameraScanButton, WedgeToggle, useWedgeMode } from '../components/ScanControls';
 import { printHtml } from '../utils/print';
 import { barcodeSvgString } from '../utils/barcode-svg';
 
@@ -72,6 +74,8 @@ export function ProductsScreen() {
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
+
+  const [wedge, toggleWedge] = useWedgeMode();
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formName, setFormName] = useState('');
   const [formCategoryId, setFormCategoryId] = useState('');
@@ -146,6 +150,16 @@ export function ProductsScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Android back button: close the create/edit and CSV-import dialogs first.
+  useEffect(() => {
+    if (!modalOpen && !csvModalOpen) return;
+    return registerBackHandler(() => {
+      if (csvModalOpen) setCsvModalOpen(false);
+      else setModalOpen(false);
+      return true;
+    });
+  }, [modalOpen, csvModalOpen]);
 
   // SaleScreen scan-not-found offer: open the create modal with the scanned
   // barcode prefilled, then clear the navigation state so a refresh or back
@@ -698,12 +712,15 @@ export function ProductsScreen() {
               <h2 className="text-2xl font-bold text-gray-900">
                 {editingProduct ? 'Edit Product' : 'Create Product'}
               </h2>
-              <button
-                onClick={() => setModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <WedgeToggle wedge={wedge} onToggle={toggleWedge} />
+                <button
+                  onClick={() => setModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <form onSubmit={handleSaveProduct} className="space-y-6">
@@ -870,6 +887,7 @@ export function ProductsScreen() {
                                   barcodeInputRefs.current[index] = el;
                                 }}
                                 type="text"
+                                inputMode={wedge ? 'none' : 'text'}
                                 value={vf.barcode}
                                 onChange={(e) => {
                                   const val = e.target.value;
@@ -886,8 +904,16 @@ export function ProductsScreen() {
                                     }
                                   }
                                 }}
-                                className="flex-1 px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
-                                placeholder="Scan or type barcode"
+                                className="flex-1 px-3 py-2 border rounded-lg min-h-11 bg-white text-sm min-w-0"
+                                placeholder={wedge ? 'Wedge: scan with OTG scanner…' : 'Scan or type barcode'}
+                              />
+                              <CameraScanButton
+                                onError={setError}
+                                onScan={(code) => {
+                                  setFormVariants((prev) =>
+                                    prev.map((item, i) => (i === index ? { ...item, barcode: code } : item)),
+                                  );
+                                }}
                               />
                               <button
                                 type="button"

@@ -13,6 +13,7 @@ import type { Shop, Device, VfBackup } from '@vaporflow/core';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
+import { registerBackHandler } from '../utils/back-nav';
 import { DbCheck } from './DbCheck';
 
 export function SettingsScreen() {
@@ -83,6 +84,15 @@ export function SettingsScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Android back button: close the restore-confirmation modal first.
+  useEffect(() => {
+    if (!restoreModalOpen) return;
+    return registerBackHandler(() => {
+      setRestoreModalOpen(false);
+      return true;
+    });
+  }, [restoreModalOpen]);
 
   // Wraps every cloud action so errors land in the panel instead of vanishing.
   async function runCloudAction(action: () => Promise<void>, successMessage?: string) {

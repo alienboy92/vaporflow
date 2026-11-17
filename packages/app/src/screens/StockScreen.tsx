@@ -4,6 +4,8 @@ import { StockRepo, ShopRepo, ProductRepo, DeviceRepo } from '@vaporflow/core';
 import type { Shop, StockMovement } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { registerBackHandler } from '../utils/back-nav';
+import { CameraScanButton } from '../components/ScanControls';
 
 interface InventoryItem {
   product_id: string;
@@ -38,7 +40,7 @@ export function StockScreen() {
     { variantId: string; variantLabel: string; qty: string; unitCost: string; note: string }[]
   >([]);
   const [allVariants, setAllVariants] = useState<
-    { variant_id: string; label: string; cost_price: number }[]
+    { variant_id: string; label: string; cost_price: number; barcode: string | null }[]
   >([]);
 
   // Adjustment Modal State
@@ -75,6 +77,7 @@ export function StockScreen() {
         variant_id: v.id,
         label: `${prodMap.get(v.product_id) ?? 'Product'} — ${v.name} (${v.sku || v.barcode || 'No SKU'})`,
         cost_price: v.cost_price,
+        barcode: v.barcode ?? null,
       }));
       setAllVariants(list);
     } catch (err) {
@@ -88,6 +91,34 @@ export function StockScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Android back button: close the topmost stock modal first.
+  useEffect(() => {
+    if (!stockInOpen && !adjustOpen && !historyOpen) return;
+    return registerBackHandler(() => {
+      if (historyOpen) setHistoryOpen(false);
+      else if (adjustOpen) setAdjustOpen(false);
+      else setStockInOpen(false);
+      return true;
+    });
+  }, [stockInOpen, adjustOpen, historyOpen]);
+
+  // Camera scan in Stock In: match the scanned barcode to a variant row.
+  function handleStockInScan(index: number, code: string) {
+    const match = allVariants.find(
+      (v) => v.barcode?.toLowerCase() === code.toLowerCase(),
+    );
+    if (!match) {
+      setError(`No product variant found for barcode "${code}".`);
+      return;
+    }
+    setError('');
+    setStockInItems((prev) =>
+      prev.map((item, i) =>
+        i === index ? { ...item, variantId: match.variant_id, variantLabel: match.label } : item,
+      ),
+    );
+  }
 
   function handleOpenStockIn() {
     setStockInItems([
@@ -421,22 +452,28 @@ export function StockScreen() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">Variant</label>
-                      <select
-                        value={si.variantId}
-                        onChange={(e) => {
-                          const vId = e.target.value;
-                          setStockInItems((prev) =>
-                            prev.map((item, i) => (i === index ? { ...item, variantId: vId } : item)),
-                          );
-                        }}
-                        className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
-                      >
-                        {allVariants.map((v) => (
-                          <option key={v.variant_id} value={v.variant_id}>
-                            {v.label}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex gap-2">
+                        <select
+                          value={si.variantId}
+                          onChange={(e) => {
+                            const vId = e.target.value;
+                            setStockInItems((prev) =>
+                              prev.map((item, i) => (i === index ? { ...item, variantId: vId } : item)),
+                            );
+                          }}
+                          className="flex-1 px-3 py-2 border rounded-lg min-h-11 bg-white text-sm min-w-0"
+                        >
+                          {allVariants.map((v) => (
+                            <option key={v.variant_id} value={v.variant_id}>
+                              {v.label}
+                            </option>
+                          ))}
+                        </select>
+                        <CameraScanButton
+                          onError={setError}
+                          onScan={(code) => handleStockInScan(index, code)}
+                        />
+                      </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div>

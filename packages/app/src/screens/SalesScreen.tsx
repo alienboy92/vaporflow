@@ -12,6 +12,7 @@ import {
 import type { Shop, Sale, SaleItem, Return, ReturnItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { registerBackHandler } from '../utils/back-nav';
 import { ReturnReceiptModal } from '../components/ReturnReceiptModal';
 import type { ReturnReceipt } from '../utils/return-receipt';
 import { ReceiptModal } from '../components/ReceiptModal';
@@ -92,6 +93,19 @@ export function SalesScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Android back button: close the topmost receipt/return modal first. The
+  // return-form panel is inline state, not a stacked dialog, so only modals
+  // register here.
+  useEffect(() => {
+    const modalOpen = returnReceipt !== null || selectedSaleResult !== null;
+    if (!modalOpen) return;
+    return registerBackHandler(() => {
+      if (returnReceipt) setReturnReceipt(null);
+      else setSelectedSaleResult(null);
+      return true;
+    });
+  }, [returnReceipt, selectedSaleResult]);
 
   async function handleViewReceipt(sale: Sale) {
     try {

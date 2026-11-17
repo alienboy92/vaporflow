@@ -14,6 +14,8 @@ import {
 import type { Shop, Variant, Sale, SaleItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
+import { setSaleCartActive, registerBackHandler } from '../utils/back-nav';
+import { CameraScanButton, WedgeToggle, useWedgeMode } from '../components/ScanControls';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import { ReceiptModal } from '../components/ReceiptModal';
 
@@ -31,6 +33,7 @@ interface CartLine {
 export function SaleScreen() {
   const db = useDb();
   const saleCompleted = useCloudSync().saleCompleted;
+  const [wedge, toggleWedge] = useWedgeMode();
   const navigate = useNavigate();
   const [shop, setShop] = useState<Shop | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -243,21 +246,20 @@ export function SaleScreen() {
     focusScan();
   }, [focusScan]);
 
-  // Handle barcode scan / search submit
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const query = searchQuery.trim();
-    if (!query) return;
+  // Handle barcode scan / search submit (shared by the form and the camera scan).
+  function handleScanQuery(query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) return;
 
     // Check exact barcode match
-    const matchedBarcode = variants.find((v) => v.barcode?.toLowerCase() === query.toLowerCase());
+    const matchedBarcode = variants.find((v) => v.barcode?.toLowerCase() === trimmed.toLowerCase());
     if (matchedBarcode) {
       addToCartByVariantId(matchedBarcode.id);
       return;
     }
 
     // Check exact SKU match
-    const matchedSku = variants.find((v) => v.sku?.toLowerCase() === query.toLowerCase());
+    const matchedSku = variants.find((v) => v.sku?.toLowerCase() === trimmed.toLowerCase());
     if (matchedSku) {
       addToCartByVariantId(matchedSku.id);
       return;
@@ -266,23 +268,43 @@ export function SaleScreen() {
     // If query matches single variant name/product name uniquely
     const matches = variants.filter(
       (v) =>
-        v.product_name.toLowerCase().includes(query.toLowerCase()) ||
-        v.name.toLowerCase().includes(query.toLowerCase()) ||
-        v.barcode?.includes(query) ||
-        v.sku?.toLowerCase().includes(query.toLowerCase()),
+        v.product_name.toLowerCase().includes(trimmed.toLowerCase()) ||
+        v.name.toLowerCase().includes(trimmed.toLowerCase()) ||
+        v.barcode?.includes(trimmed) ||
+        v.sku?.toLowerCase().includes(trimmed.toLowerCase()),
     );
 
     if (matches.length === 1) {
       addToCartByVariantId(matches[0]!.id);
     } else if (matches.length === 0) {
-      setNotFoundQuery(query);
-      setError(`No product found matching "${query}".`);
+      setNotFoundQuery(trimmed);
+      setError(`No product found matching "${trimmed}".`);
       setTimeout(() => {
         setError('');
         setNotFoundQuery('');
       }, 8000);
     }
   }
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    handleScanQuery(searchQuery);
+  }
+
+  // Android back button: close the receipt modal first; flag the cart so the
+  // Shell can confirm before abandoning an in-progress sale.
+  useEffect(() => {
+    if (!completedResult) return;
+    return registerBackHandler(() => {
+      setCompletedResult(null);
+      return true;
+    });
+  }, [completedResult]);
+
+  useEffect(() => {
+    setSaleCartActive(cart.length > 0);
+    return () => setSaleCartActive(false);
+  }, [cart.length]);
 
   // Offer: jump to the products catalog with the scanned barcode prefilled.
   function handleCreateFromScan() {
@@ -612,11 +634,20 @@ export function SaleScreen() {
                 id="barcode-scan"
                 ref={scanInputRef}
                 type="text"
+                inputMode={wedge ? 'none' : 'text'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Scan barcode or type name..."
-                className="flex-1 border rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                placeholder={wedge ? 'Wedge mode: scan with OTG scanner…' : 'Scan barcode or type name...'}
+                className="flex-1 border rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:outline-none min-w-0"
                 autoFocus
+              />
+              <CameraScanButton
+                onError={setError}
+                onScan={(code) => {
+                  setSearchQuery(code);
+                  handleScanQuery(code);
+                  focusScan();
+                }}
               />
               <button
                 type="submit"
@@ -624,6 +655,14 @@ export function SaleScreen() {
               >
                 Find
               </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <WedgeToggle wedge={wedge} onToggle={toggleWedge} />
+              <span className="text-xs text-gray-500">
+                {wedge
+                  ? 'Scanner wedge: soft keyboard suppressed; tap Manual to type.'
+                  : 'Manual entry; tap Scanner before using a USB/OTG scanner.'}
+              </span>
             </div>
           </form>
 
