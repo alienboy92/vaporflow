@@ -31,3 +31,17 @@ Version 2.0 · Phase 8B Companion
   5. Recover the receipt counter to the highest receipt number in use (last-used convention: the next sale uses value + 1).
   Joining is rejected if the device already has a local shop, or while offline.
 - **Offline Resilience**: VaporFlow is local-first. SQLite remains fully functional offline. The engine polls status every 5 seconds for the UI, and on network return, the 30-second interval, and 2 seconds after each sale, it pushes pending dirty rows and pulls updates. "Sync Now" forces an immediate pass.
+
+## 4. Live acceptance suite
+
+`packages/core/src/sync/supabase-live.test.ts` runs the hosted acceptance checks. It is **skipped unless every variable is set** — never point it at a production database; it creates disposable shops per run.
+
+```powershell
+$env:LIVE_SUPABASE_URL   = 'https://<project>.supabase.co'
+$env:LIVE_SUPABASE_ANON_KEY = '<anon or sb_publishable_... key>'
+$env:LIVE_TEST_EMAIL     = '<disposable account email>'
+$env:LIVE_TEST_PASSWORD  = '<password>'
+pnpm test supabase-live
+```
+
+Requirements: the schema from `supabase/migrations/00001_initial.sql` applied (Dashboard → SQL Editor; never replay it over a deployed database), Email/Password auth enabled, and "Confirm email" OFF for the disposable accounts. The suite covers hosted Auth, `claim_shop`, two-engine convergence through the real RPCs, full second-device enrollment over the network, concurrent claim contention, interrupted-enrollment retry, signed-out denial, and second-account authorization denial. Result as of 17 November 2026: 6/6 PASS (see `docs/PHASE8B_REVIEW.md`).

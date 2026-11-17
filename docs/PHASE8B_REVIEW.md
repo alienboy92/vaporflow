@@ -40,19 +40,30 @@ Additional repairs found while applying the fixes: `enrollExistingShop` original
 
 Enrollment tests cover: probe exists/absent (read-only — no placeholder row created), full enrollment (unique code ≠ owner's, device row pushed with `dirty` cleared, `active_device_id` set, shop/catalog/sales pulled, stock converged, counter = '2'), non-empty-device rejection, offline rejection, interrupted-retry device reuse (same id and code, no duplicate rows), and repeat-enrollment code uniqueness against accumulated cloud devices.
 
+## Live hosted acceptance (17 November 2026 — RUN, passing)
+
+Hosted project `https://qdgfnpmmphlvsdkggabf.supabase.co`, schema deployed via `00001_initial.sql` (Dashboard SQL editor, "Success"), email confirmation off, two disposable accounts. Executed by `packages/core/src/sync/supabase-live.test.ts` (opt-in, env-gated; skipped in normal runs): **6/6 passed**.
+
+| Live check | Result |
+| -------------------------------------------------------------------------- | ------ |
+| Hosted Auth: sign-up, sign-in, sign-out, re-sign-in (GoTrue v2.198.0) | PASS |
+| `claim_shop` against hosted Postgres (fresh UUID-v7 shop) | PASS |
+| Two-engine convergence through the real `sync_push`/`sync_pull` RPCs (shop, device, category, product, variant, movement, 2 sales; then a third sale reaching the second device incrementally) | PASS |
+| Full second-device enrollment over the network: probe → claim → unique device code vs cloud → full pull → counter recovery ('2') → stock converged (25) | PASS |
+| Signed-out access denial (`claim_shop` raises 'Not authenticated'; RPCs revoked from `anon`) | PASS |
+| Concurrent claim contention: two parallel claims of one fresh shop → both succeed, exactly one shop row | PASS |
+| Interrupted enrollment retried against the hosted cloud → same device id/code, no duplicate device rows, full pull completes | PASS |
+| Second-account authorization denial: `claim_shop` on another account's shop → `false`; `sync_pull` → raises; rogue `sync_push` into that shop → batch-rejected | PASS |
+| Secure deployment posture: tables/RPCs revoked from `anon` (401 permission denied) | PASS |
+
 ## Remaining acceptance (hardware/live)
 
-NOT RUN and pending live deployment authorization by design:
+NOT RUN — these need a physical second device and wall-clock time, and cannot be executed from a single machine:
 
-- Real hosted Supabase Auth (sign-up/sign-in/email confirmation, session persistence across restarts, token refresh past 1 h).
-- `claim_shop`/`sync_push`/`sync_pull` against the hosted Postgres RPCs (the PGlite coverage of the SQL remains local).
-- Real second-device enrollment over the network (Windows + phone), including enrollment retries against the hosted server and kill/restart during the initial full pull.
-- Two-account authorization denial (a non-member account must not claim or join).
-- Multi-connection claim contention (two accounts claiming simultaneously).
-- Airplane-mode convergence on two real devices (sell offline on both, reconnect, totals match within a minute).
-- Session expiry / refresh-token rotation while the engine is running.
-
-The Phase 2–7 device checks also remain pending.
+- Real phone hardware: airplane-mode sell-then-reconnect convergence between a Windows PC and an Android phone (the hosted convergence above covers the engine/RPC path from two software clients on one machine).
+- Kill/restart of the actual app process mid-initial-pull on a device (the interruption logic is covered by the hosted retry test at the transport level).
+- Session expiry / refresh-token rotation observed over a real ~1-hour wall-clock window with the app left open.
+- Phase 2–7 device checks also remain pending.
 
 ## Known issues / notes
 
@@ -60,3 +71,5 @@ The Phase 2–7 device checks also remain pending.
 - The join flow requires the owner to manually share the Shop ID (copy button in Settings → Cloud Connection) and the Supabase project credentials; there is no QR/pairing channel yet (not specified).
 - Credential entry is per-device by design (local-only settings table); `.env` values are no longer read into the Settings UI — the persisted settings win, keeping behavior identical across desktop and Android.
 - `probeShopExists` issues a read-only `shops` pull and trusts RLS tenant visibility; a shop that exists but is invisible to the signed-out caller reads as absent, which is the correct rejection path for a typo'd ID.
+- An empty `sync_push` (zero rows) legitimately accepts 0 — the membership check is per-row; denial is proven with a rogue row instead.
+- The live suite creates disposable shops on the hosted project per run (soft state, no cleanup necessary for a check project; never point it at a production database).
