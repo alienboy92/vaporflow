@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SqliteTestAdapter } from '../testing/sqlite-test-adapter.js';
@@ -34,8 +35,8 @@ const LIVE_EMAIL = process.env.LIVE_TEST_EMAIL;
 const LIVE_PASSWORD = process.env.LIVE_TEST_PASSWORD;
 // Second account for authorization-denial checks (email confirmation must be
 // off so a session is granted on sign-up).
-const LIVE_EMAIL_2 = process.env.LIVE_TEST_EMAIL_2 ?? 'vaporflow-livecheck2@example.com';
-const LIVE_PASSWORD_2 = process.env.LIVE_TEST_PASSWORD_2 ?? 'VaporFlow!Live2026b';
+const LIVE_EMAIL_2 = process.env.LIVE_TEST_EMAIL_2 ?? `vaporflow-qa-${randomUUID()}@example.com`;
+const LIVE_PASSWORD_2 = process.env.LIVE_TEST_PASSWORD_2 ?? randomUUID();
 const liveIt = it.skipIf(!LIVE_URL || !LIVE_KEY || !LIVE_EMAIL || !LIVE_PASSWORD);
 
 class OnlineNetwork implements NetworkAdapter {

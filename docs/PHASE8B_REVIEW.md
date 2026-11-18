@@ -58,6 +58,8 @@ Hosted project `https://qdgfnpmmphlvsdkggabf.supabase.co`, schema deployed via `
 
 ## Remaining acceptance (hardware/live)
 
+On 18 November, three hosted acceptance tests passed with a new disposable account and shop on the same project. These covered authentication, two-engine convergence and enrollment, and interrupted enrollment retry. The build now accepts a copied Data API URL ending in `/rest/v1/` in both cloud setup paths and on session restoration. Five URL regression cases cover the project root, trailing slash, REST suffix and reverse-proxy prefix. The live suite now generates random fallback credentials for the second test account. Any previously created account retains its existing password.
+
 NOT RUN — these need a physical second device and wall-clock time, and cannot be executed from a single machine:
 
 - Real phone hardware: airplane-mode sell-then-reconnect convergence between a Windows PC and an Android phone (the hosted convergence above covers the engine/RPC path from two software clients on one machine).

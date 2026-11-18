@@ -16,6 +16,7 @@ import {
   SettingsRepo,
   ShopRepo,
   createVaporFlowSupabaseClient,
+  projectUrl,
   claimShop,
   SupabaseSyncTransport,
   SyncEngine,
@@ -169,17 +170,8 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
 
   const saveConfig = useCallback(
     async (url: string, anonKey: string) => {
-      const trimmedUrl = url.trim();
+      const trimmedUrl = projectUrl(url);
       const trimmedKey = anonKey.trim();
-      let parsed: URL;
-      try {
-        parsed = new URL(trimmedUrl);
-      } catch {
-        throw new Error('Enter a valid Supabase project URL (https://xxxx.supabase.co).');
-      }
-      if (parsed.protocol !== 'https:') {
-        throw new Error('The Supabase project URL must use https://');
-      }
       if (!trimmedKey || /^your-/.test(trimmedKey)) {
         throw new Error('Enter your Supabase anon (public) key from Project Settings > API.');
       }
