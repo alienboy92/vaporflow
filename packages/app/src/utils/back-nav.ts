@@ -40,6 +40,7 @@ export function clearBackHandlers(): void {
 }
 
 let saleCartActive = false;
+let saleAbandonHandler: (() => void) | null = null;
 
 /** Tracks whether an in-progress sale cart holds items (called by SaleScreen). */
 export function setSaleCartActive(active: boolean): void {
@@ -48,4 +49,24 @@ export function setSaleCartActive(active: boolean): void {
 
 export function isSaleCartActive(): boolean {
   return saleCartActive;
+}
+
+/**
+ * Registers the action that clears the active sale cart. The Shell calls it
+ * after the user confirms abandoning the sale on Back, so the cart really is
+ * cleared (the dialog says so) even though the WebView keeps its state.
+ */
+export function setSaleAbandonHandler(handler: () => void): void {
+  saleAbandonHandler = handler;
+}
+
+export function clearSaleAbandonHandler(): void {
+  saleAbandonHandler = null;
+}
+
+/** Clears the cart via the registered handler; true when one was registered. */
+export function abandonSaleCart(): boolean {
+  if (!saleAbandonHandler) return false;
+  saleAbandonHandler();
+  return true;
 }

@@ -14,7 +14,12 @@ import {
 import type { Shop, Variant, Sale, SaleItem } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
-import { setSaleCartActive, registerBackHandler } from '../utils/back-nav';
+import {
+  setSaleCartActive,
+  registerBackHandler,
+  setSaleAbandonHandler,
+  clearSaleAbandonHandler,
+} from '../utils/back-nav';
 import { CameraScanButton, WedgeToggle, useWedgeMode } from '../components/ScanControls';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import { ReceiptModal } from '../components/ReceiptModal';
@@ -305,6 +310,13 @@ export function SaleScreen() {
     setSaleCartActive(cart.length > 0);
     return () => setSaleCartActive(false);
   }, [cart.length]);
+
+  // The Back-button confirm's "cart will be cleared" promise: the Shell calls
+  // this handler after the user confirms abandoning the sale.
+  useEffect(() => {
+    setSaleAbandonHandler(() => setCart([]));
+    return () => clearSaleAbandonHandler();
+  }, []);
 
   // Offer: jump to the products catalog with the scanned barcode prefilled.
   function handleCreateFromScan() {

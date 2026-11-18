@@ -5,6 +5,9 @@ import {
   clearBackHandlers,
   setSaleCartActive,
   isSaleCartActive,
+  setSaleAbandonHandler,
+  clearSaleAbandonHandler,
+  abandonSaleCart,
 } from './back-nav';
 
 describe('Android back-button coordination (Phase 9)', () => {
@@ -63,6 +66,19 @@ describe('Android back-button coordination (Phase 9)', () => {
     expect(isSaleCartActive()).toBe(true);
     setSaleCartActive(false);
     expect(isSaleCartActive()).toBe(false);
+  });
+
+  it('clears the confirmed-abandoned cart through the registered handler', () => {
+    let cleared = 0;
+    expect(abandonSaleCart()).toBe(false); // no SaleScreen mounted
+    setSaleAbandonHandler(() => {
+      cleared += 1;
+    });
+    expect(abandonSaleCart()).toBe(true);
+    expect(cleared).toBe(1);
+    clearSaleAbandonHandler();
+    expect(abandonSaleCart()).toBe(false);
+    expect(cleared).toBe(1);
   });
 });
 

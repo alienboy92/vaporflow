@@ -15,7 +15,7 @@ import { globalErrorLogger } from '../utils/logger';
 import { STOCK_CHANGED_EVENT } from '../utils/stock-events';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { handleBackThroughDialogs, isSaleCartActive } from '../utils/back-nav';
+import { handleBackThroughDialogs, isSaleCartActive, abandonSaleCart } from '../utils/back-nav';
 
 export function Shell() {
   const db = useDb();
@@ -38,11 +38,15 @@ export function Shell() {
         setMoreOpen(false);
         return;
       }
-      // Sale root: confirm only when a cart actually holds items, then exit
-      // to the launcher (history.back() at the root would no-op).
+      // Sale root: confirm only when a cart actually holds items, then clear
+      // the confirmed-abandoned cart and exit to the launcher (history.back()
+      // at the root would no-op).
       if (location.pathname === '/') {
-        if (isSaleCartActive() && !window.confirm('Abandon this sale? The cart will be cleared.')) {
-          return;
+        if (isSaleCartActive()) {
+          if (!window.confirm('Abandon this sale? The cart will be cleared.')) {
+            return;
+          }
+          abandonSaleCart();
         }
         void App.minimizeApp();
         return;

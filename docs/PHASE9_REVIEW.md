@@ -27,7 +27,7 @@ Updated 17 November 2026. Scope: camera scanner, OTG scanner, mobile finishing. 
 | ------------------------------------------------- | ------------------------------------------------------- |
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
-| `pnpm test` | PASS — 159 tests across 25 files (was 152; +7 back-nav/wedge unit tests), plus 2 skipped opt-in benchmarks and 3 skipped env-gated live tests |
+| `pnpm test` | PASS — 160 tests across 25 files (was 152; +8 back-nav/wedge/abandon-cart unit tests), plus 2 skipped opt-in benchmarks and 3 skipped env-gated live tests |
 | `pnpm --filter @vaporflow/app build` | PASS |
 | `pnpm build:desktop` (Electron NSIS) | PASS — unsigned dev build, as before |
 | `pnpm --filter @vaporflow/mobile build` + `cap sync android` + `gradlew assembleDebug` | PASS — debug APK builds with the scanner/app plugins (3m 27 s) |
@@ -38,13 +38,16 @@ Updated 17 November 2026. Scope: camera scanner, OTG scanner, mobile finishing. 
 
 **Bug found by the walkthrough, fixed**: the `@capacitor-mlkit/barcode-scanning` plugin ships an empty Android manifest, so `android.permission.CAMERA` was never declared in the generated app manifest — Android instant-denied the request with no dialog and the UI silently did nothing. Fixed by declaring the permission and by the adapter throwing a visible error on denial instead of returning `null`; because `apps/mobile/android` is git-ignored and regenerated, `scripts/android.ps1` now patches the permission in idempotently on every run (verified by a strip-and-repatch round-trip).
 
+**Second bug found by the walkthrough, fixed**: confirming the Back-button "Abandon this sale? The cart will be cleared." dialog minimized the app but kept the cart — the dialog promised a clear that never happened (the Shell only minimized; the WebView retains state). Fixed by registering the cart-clearing action from SaleScreen (`setSaleAbandonHandler` in `utils/back-nav.ts`); the Shell now calls `abandonSaleCart()` after confirmation, so the cart really is cleared, matching the dialog's wording. Verified on-device: adding a scanned item, confirming Back, relaunching — the cart is empty.
+
 NOT RUN — needs a physical Android phone with a camera and a USB-OTG scanner:
 
 - The full 20-barcode camera scan sweep and repeated scans, background/resume mid-scan, and cancellation from the scanner UI.
 - A real USB-OTG scanner typing into the wedge-mode field (suppression is verified; the scanner itself is not).
-- Back-button confirm on a sale root with cart items (needs a product in the catalog first).
 - The complete phone walkthrough at 390×844: setup, products, stock, sale, receipt/share, return, expense/report, backup, sync problems.
 - The Phase 2–8 device checks also remain pending.
+
+Verified with fixture data on-device: barcode→cart add, cart-abandon confirm (cancel keeps the cart and app; OK clears the cart and minimizes, cart empty after relaunch).
 
 ## Known issues / notes
 
