@@ -56,7 +56,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
             type="password"
             maxLength={6}
             autoFocus
-            className="w-full text-center text-2xl tracking-widest rounded border border-gray-300 p-3 min-h-11 focus:ring-2 focus:ring-blue-500"
+            className="w-full text-center text-2xl tracking-widest rounded border border-gray-300 p-3 min-h-11 focus:ring-2 focus:ring-emerald-500"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             placeholder="••••"
@@ -65,7 +65,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
           <button
             type="submit"
             disabled={verifying || !pin}
-            className="w-full rounded bg-blue-700 text-white p-3 min-h-11 font-medium hover:bg-blue-800 disabled:opacity-50"
+            className="w-full rounded bg-emerald-700 text-white p-3 min-h-11 font-medium hover:bg-emerald-800 disabled:opacity-50"
           >
             {verifying ? 'Checking...' : 'Unlock'}
           </button>

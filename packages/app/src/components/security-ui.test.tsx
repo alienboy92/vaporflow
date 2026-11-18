@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { MemoryRouter } from 'react-router-dom';
+import { CloudSyncProvider } from '../context/CloudSyncProvider';
 import { Shell } from './Shell';
 import { App } from '../App';
+import { handleBackThroughDialogs } from '../utils/back-nav';
 import { notifyStockChanged } from '../utils/stock-events';
 import { uuidv7 } from '@vaporflow/core';
 import type { ReactNode } from 'react';
@@ -11,6 +13,7 @@ const state = vi.hoisted(() => ({ db: { query: vi.fn() }, values: {} as Record<s
 vi.mock('../context/DbProvider', () => ({
   useDb: () => state.db,
   usePlatform: () => ({
+    platform: 'android',
     network: { isOnline: () => true, onChange: () => () => {} },
   }),
   DbProvider: ({ children }: { children: ReactNode }) => children,
@@ -39,11 +42,11 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
-async function mountShell() {
+async function mountShell(path = '/settings') {
   await act(async () => {
     renderer = create(
-      <MemoryRouter initialEntries={['/settings']}>
-        <Shell />
+      <MemoryRouter initialEntries={[path]}>
+        <CloudSyncProvider><Shell /></CloudSyncProvider>
       </MemoryRouter>,
     );
   });
@@ -135,4 +138,44 @@ it('shows a retry screen instead of setup when the shop query fails', async () =
     renderer!.root.findByType('button').props.onClick();
   });
   expect(JSON.stringify(renderer!.toJSON())).toContain('First run wizard');
+});
+
+it('keeps the picked quantity when Android Back closes checkout and filters the grid by category', async () => {
+  const shopId = uuidv7();
+  const categoryId = uuidv7();
+  const productId = uuidv7();
+  const variantId = uuidv7();
+  const row = {
+    id: shopId, shop_id: shopId, device_id: uuidv7(), created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(), deleted_at: null, server_updated_at: null, dirty: 0,
+  };
+  state.db.query.mockImplementation(async (sql: string) => {
+    if (sql.includes('FROM shops')) return [{ ...row, name: 'Shop', address: null, phone: null,
+      logo_base64: null, show_logo_on_receipt: 0, receipt_footer: '', default_low_stock_threshold: 2 }];
+    if (sql.startsWith('SELECT * FROM categories')) return [
+      { ...row, id: categoryId, name: 'Cables', sort_order: 1 },
+      { ...row, id: uuidv7(), name: 'Adapters', sort_order: 2 },
+    ];
+    if (sql.startsWith('SELECT * FROM products')) return [
+      { ...row, id: productId, name: 'Cable', category_id: categoryId, brand: null, notes: null, is_active: 1 },
+    ];
+    if (sql.startsWith('SELECT * FROM variants')) return [
+      { ...row, id: variantId, name: 'USB', product_id: productId, cost_price: 100, sale_price: 250,
+        sku: null, barcode: null, low_stock_threshold: null, track_stock: 1, is_active: 1 },
+    ];
+    return [];
+  });
+  await mountShell('/');
+  const root = renderer!.root;
+  const card = () => root.findAllByProps({ className: 'pick-card' });
+  act(() => card()[0]!.props.onClick());
+  act(() => root.findByProps({ className: 'cart-dock' }).props.onClick());
+  expect(root.findAllByType('dialog')).toHaveLength(1);
+  act(() => { expect(handleBackThroughDialogs()).toBe(true); });
+  expect(root.findAllByType('dialog')).toHaveLength(0);
+  expect(root.findByProps({ className: 'pick-qty' }).children).toEqual(['1']);
+  act(() => root.findAllByType('button').find(b => b.children.includes('Adapters'))!.props.onClick());
+  expect(card()).toHaveLength(0);
+  act(() => root.findAllByType('button').find(b => b.children.includes('Cables'))!.props.onClick());
+  expect(card()).toHaveLength(1);
 });

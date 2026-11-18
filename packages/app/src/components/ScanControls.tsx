@@ -5,6 +5,7 @@
  * pops up while a physical scanner types into the focused field.
  */
 import React, { useCallback } from 'react';
+import { Icon } from './Icon';
 import { usePlatform } from '../context/DbProvider';
 import { useWedgeMode } from '../utils/wedge';
 
@@ -40,9 +41,9 @@ export function CameraScanButton({ onScan, onError, disabled }: CameraScanButton
       onClick={() => void handleClick()}
       title="Scan with camera"
       aria-label="Scan with camera"
-      className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-3 min-w-11 min-h-11 text-base font-medium hover:bg-gray-100 disabled:opacity-50"
+      className="shrink-0 rounded-lg inline-flex items-center justify-center bg-emerald-600 text-white min-w-11 min-h-11 hover:bg-emerald-700 disabled:opacity-50"
     >
-      {scanning ? '…' : '📷'}
+      {scanning ? '…' : <Icon name="camera" />}
     </button>
   );
 }
@@ -51,13 +52,15 @@ interface WedgeToggleProps {
   /** Reflects and persists the wedge preference; inputs read the value for inputMode. */
   wedge: boolean;
   onToggle: () => void;
+  compact?: boolean;
 }
 
-export function WedgeToggle({ wedge, onToggle }: WedgeToggleProps) {
+export function WedgeToggle({ wedge, onToggle, compact }: WedgeToggleProps) {
   return (
     <button
       type="button"
       onClick={onToggle}
+      aria-label="Scanner wedge mode"
       aria-pressed={wedge}
       title={
         wedge
@@ -66,11 +69,11 @@ export function WedgeToggle({ wedge, onToggle }: WedgeToggleProps) {
       }
       className={`shrink-0 rounded-lg border px-3 py-3 min-h-11 text-xs font-medium ${
         wedge
-          ? 'border-blue-600 bg-blue-50 text-blue-700'
+          ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
           : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-100'
       }`}
     >
-      {wedge ? '🔌 Scanner' : '⌨ Manual'}
+      {compact ? <Icon name="keyboard" /> : wedge ? 'Scanner' : 'Manual'}
     </button>
   );
 }

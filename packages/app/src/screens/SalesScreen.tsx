@@ -98,14 +98,15 @@ export function SalesScreen() {
   // return-form panel is inline state, not a stacked dialog, so only modals
   // register here.
   useEffect(() => {
-    const modalOpen = returnReceipt !== null || selectedSaleResult !== null;
+    const modalOpen = Boolean(returningSale || returnReceipt || selectedSaleResult);
     if (!modalOpen) return;
     return registerBackHandler(() => {
       if (returnReceipt) setReturnReceipt(null);
+      else if (returningSale) setReturningSale(null);
       else setSelectedSaleResult(null);
       return true;
     });
-  }, [returnReceipt, selectedSaleResult]);
+  }, [returningSale, returnReceipt, selectedSaleResult]);
 
   async function handleViewReceipt(sale: Sale) {
     try {
@@ -257,7 +258,6 @@ export function SalesScreen() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Sales History & Returns</h1>
-          <p className="text-sm text-gray-600">Review past sales, search receipts, and process product returns.</p>
         </div>
       </div>
 
@@ -279,7 +279,7 @@ export function SalesScreen() {
             className="w-full border rounded-lg px-3 py-2 text-sm"
           />
         </div>
-        <div className="flex gap-4 w-full md:w-auto">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">From Date</label>
             <input
@@ -317,8 +317,8 @@ export function SalesScreen() {
 
       {/* Per-Day Totals Summary */}
       {dailyTotals.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl space-y-2">
-          <h3 className="text-sm font-bold text-blue-900">Per-Day Totals (Filtered Range)</h3>
+        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-2">
+          <h3 className="text-sm font-bold text-emerald-900">Per-Day Totals (Filtered Range)</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             {[...dailyTotals.entries()].map(([date, stats]) => (
               <div key={date} className="bg-white p-3 rounded-lg border shadow-xs text-xs space-y-1">
@@ -329,7 +329,7 @@ export function SalesScreen() {
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Revenue:</span>
-                  <span className="font-semibold text-blue-700">{formatMoney(stats.total, 0, currency)}</span>
+                  <span className="font-semibold text-emerald-700">{formatMoney(stats.total, 0, currency)}</span>
                 </div>
                 {stats.refunds > 0 && (
                   <div className="flex justify-between text-red-600">
@@ -343,94 +343,47 @@ export function SalesScreen() {
         </div>
       )}
 
-      {/* Sales Table */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                <th className="p-4">Receipt No</th>
-                <th className="p-4">Date & Time</th>
-                <th className="p-4">Payment</th>
-                <th className="p-4 text-right">Total</th>
-                <th className="p-4 text-center">Returns</th>
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 text-sm">
-              {filteredSales.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-400">
-                    No sales found matching the criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredSales.map((sale) => {
-                  const rets = returnsMap.get(sale.id) || [];
-                  const refundedTotal = rets.reduce((sum, r) => sum + r.refund_amount, 0);
-                  return (
-                    <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="p-4 font-mono font-bold text-blue-700">{sale.receipt_no}</td>
-                      <td className="p-4 text-gray-600">{new Date(sale.sold_at).toLocaleString()}</td>
-                      <td className="p-4 uppercase font-medium text-gray-700">{sale.payment_method}</td>
-                      <td className="p-4 text-right font-bold text-gray-900">
-                        {formatMoney(sale.total, 0, currency)}
-                        {refundedTotal > 0 && (
-                          <span className="block text-xs font-normal text-red-600">
-                            Refunded: -{formatMoney(refundedTotal, 0, currency)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-4 text-center">
-                        {rets.length > 0 ? (
-                          <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-medium">
-                            {rets.length} return(s)
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-xs">None</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-right space-x-2">
-                        <button
-                          onClick={() => void handleViewReceipt(sale)}
-                          className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium min-h-11 inline-flex items-center"
-                        >
-                          View / Reprint
-                        </button>
-                        {rets.map((ret, index) => <button key={ret.id} className="min-h-11 px-3 border rounded" onClick={() => void (async () => {
-                          try {
-                            const original = await new SaleRepo(db).getSaleById(sale.id);
-                            if (!original) throw new Error('Original sale missing');
-                            const items = [...returnItemsMap.values()].flat().filter((item) => item.return_id === ret.id);
-                            setReturnReceipt({ ret, items, sale: original.sale, saleItems: original.items });
-                          } catch (err) { setError(err instanceof Error ? err.message : 'Could not load return receipt'); }
-                        })()}>Return receipt {index + 1}</button>)}
-                        <button
-                          onClick={() => void openReturnModal(sale)}
-                          className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-medium min-h-11 inline-flex items-center"
-                        >
-                          Return
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {returnReceipt && shop && <ReturnReceiptModal result={returnReceipt} shop={shop} onClose={() => setReturnReceipt(null)} />}
+      <div className="sales-workspace">
+        <section aria-label="Sales history" className="space-y-2">
+          {!filteredSales.length && <p className="catalog-empty">No sales match these filters.</p>}
+          {filteredSales.map(sale => {
+            const returns = returnsMap.get(sale.id) ?? [];
+            const refunded = returns.reduce((sum, r) => sum + r.refund_amount, 0);
+            return <button key={sale.id} onClick={() => void handleViewReceipt(sale)}
+              aria-pressed={sale.id === selectedSaleResult?.sale.id} className="receipt-row">
+              <span>
+                <strong>{sale.receipt_no}</strong>
+                <small>{new Date(sale.sold_at).toLocaleString()} · {sale.payment_method}</small>
+              </span>
+              <span className="text-right">
+                <strong>{formatMoney(sale.total, 0, currency)}</strong>
+                {returns.length > 0 && <small>{returns.length} returned · {formatMoney(refunded, 0, currency)}</small>}
+              </span>
+            </button>;
+          })}
+        </section>
       {/* Receipt Modal */}
       {selectedSaleResult && shop && (
         <ReceiptModal
+          actions={<div className="flex flex-wrap items-center gap-2 p-3 border-t">
+            <button className="min-h-11 rounded-xl px-4 bg-rose-50 text-rose-700 font-semibold"
+              onClick={() => void openReturnModal(selectedSaleResult.sale)}>Process return</button>
+            {(returnsMap.get(selectedSaleResult.sale.id) ?? []).map((ret, index) =>
+              <button key={ret.id} className="min-h-11 px-3 border rounded-xl" onClick={() => {
+                const items = [...returnItemsMap.values()].flat().filter(item => item.return_id === ret.id);
+                setReturnReceipt({ ret, items, sale: selectedSaleResult.sale, saleItems: selectedSaleResult.items });
+              }}>Return receipt {index + 1}</button>)}
+          </div>}
+          historyPanel
           result={selectedSaleResult}
           shop={shop}
           onClose={() => setSelectedSaleResult(null)}
         />
       )}
 
+      {!selectedSaleResult && <div className="history-empty">Select a receipt to view sale details.</div>}
+      </div>
+      {returnReceipt && shop && <ReturnReceiptModal result={returnReceipt} shop={shop} onClose={() => setReturnReceipt(null)} />}
       {/* Return Modal */}
       {returningSale && shop && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
@@ -470,7 +423,7 @@ export function SalesScreen() {
                           <div className="text-xs text-gray-600 mt-0.5 space-x-3">
                             <span>Sold Qty: {item.qty}</span>
                             <span>Already Returned: {alreadyReturned}</span>
-                            <span className="font-bold text-blue-700">Remaining: {remainingQty}</span>
+                            <span className="font-bold text-emerald-700">Remaining: {remainingQty}</span>
                           </div>
                         </div>
 
@@ -483,7 +436,7 @@ export function SalesScreen() {
                                 onChange={(e) =>
                                   setReturnRestocked({ ...returnRestocked, [item.id]: e.target.checked })
                                 }
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                               />
                               Restock item
                             </label>

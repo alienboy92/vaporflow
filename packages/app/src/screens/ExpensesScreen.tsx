@@ -1,18 +1,18 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
-import {
-  ShopRepo,
-  ExpenseRepo,
-  DeviceRepo,
-  uuidv7,
-  formatMoney,
-  localDate,
-} from '@vaporflow/core';
+import { ShopRepo, ExpenseRepo, DeviceRepo, uuidv7, formatMoney, localDate } from '@vaporflow/core';
 import type { Shop, Expense } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
-import { registerBackHandler } from '../utils/back-nav';
 
-const CATEGORIES = ['Rent', 'Utilities', 'Supplies', 'Salaries', 'Maintenance', 'Marketing', 'Miscellaneous'];
+const CATEGORIES = [
+  'Rent',
+  'Utilities',
+  'Supplies',
+  'Salaries',
+  'Maintenance',
+  'Marketing',
+  'Miscellaneous',
+];
 
 export function ExpensesScreen() {
   const db = useDb();
@@ -22,7 +22,7 @@ export function ExpensesScreen() {
   const [error, setError] = useState('');
 
   // Modal form state for add/edit
-  const [modalOpen, setModalOpen] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [expenseDate, setExpenseDate] = useState(localDate(new Date()));
   const [amountInput, setAmountInput] = useState('');
@@ -59,22 +59,12 @@ export function ExpensesScreen() {
     void loadExpenses();
   }, [loadExpenses]);
 
-  // Android back button: close the expense add/edit modal first.
-  useEffect(() => {
-    if (!modalOpen) return;
-    return registerBackHandler(() => {
-      setModalOpen(false);
-      return true;
-    });
-  }, [modalOpen]);
-
-  function openAddModal() {
+  function resetForm() {
     setEditingExpenseId(null);
     setExpenseDate(localDate(new Date()));
     setAmountInput('');
     setCategory(CATEGORIES[0]!);
     setNote('');
-    setModalOpen(true);
   }
 
   function openEditModal(exp: Expense) {
@@ -83,7 +73,8 @@ export function ExpensesScreen() {
     setAmountInput(String(exp.amount));
     setCategory(exp.category);
     setNote(exp.note || '');
-    setModalOpen(true);
+    formRef.current?.scrollIntoView({ block: 'start' });
+    formRef.current?.querySelector('input')?.focus();
   }
 
   async function handleSaveExpense(e: React.FormEvent) {
@@ -129,7 +120,7 @@ export function ExpensesScreen() {
       };
 
       await expenseRepo.save(expense);
-      setModalOpen(false);
+      resetForm();
       await loadExpenses();
     } catch (err: unknown) {
       globalErrorLogger.log(err);
@@ -146,6 +137,7 @@ export function ExpensesScreen() {
       const expenseRepo = new ExpenseRepo(db);
       const nowIso = new Date().toISOString();
       await expenseRepo.softDelete(id, nowIso);
+      if (editingExpenseId === id) resetForm();
       await loadExpenses();
     } catch (err) {
       globalErrorLogger.log(err);
@@ -162,32 +154,99 @@ export function ExpensesScreen() {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Expenses</h1>
-          <p className="text-sm text-gray-600">Track operating expenses, rent, utilities, and supplies.</p>
-        </div>
-        <button
-          onClick={openAddModal}
-          className="bg-blue-700 hover:bg-blue-800 text-white font-medium px-5 py-2.5 rounded-xl shadow transition-colors min-h-11 flex items-center gap-2"
-        >
-          + Add Expense
-        </button>
-      </div>
-
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+        <div
+          role="alert"
+          className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"
+        >
           {error}
         </div>
       )}
 
+      <section className="bg-white p-4 rounded-2xl border shadow-sm">
+        <h2 className="font-bold mb-3">
+          {editingExpenseId ? 'Edit Expense' : 'Record New Expense'}
+        </h2>
+        <form ref={formRef} onSubmit={handleSaveExpense} className="expense-form">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+            <input
+              type="date"
+              value={expenseDate}
+              onChange={(e) => setExpenseDate(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              {CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Amount ({currency})
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={amountInput}
+              onChange={(e) => setAmountInput(e.target.value)}
+              placeholder="e.g. 5000"
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Note / Reference</label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional details or vendor name..."
+              className="w-full border rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="col-span-full flex justify-end gap-3 pt-4 border-t">
+            <button
+              type="button"
+              onClick={resetForm}
+              className="px-4 py-2.5 border rounded-xl hover:bg-gray-100 font-medium text-sm text-gray-700 min-h-11"
+            >
+              Reset
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-300 text-white font-bold py-2.5 px-6 rounded-xl text-sm shadow transition-colors min-h-11"
+            >
+              {submitting ? 'Saving...' : 'Save Expense'}
+            </button>
+          </div>
+        </form>
+      </section>
       {/* Summary Card */}
       <div className="bg-white p-6 rounded-xl border shadow-sm flex items-center justify-between">
         <div>
           <h3 className="text-sm font-medium text-gray-500">Total Recorded Expenses</h3>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{formatMoney(totalExpenses, 0, currency)}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">
+            {formatMoney(totalExpenses, 0, currency)}
+          </p>
         </div>
-        <div className="bg-blue-50 text-blue-700 font-semibold px-4 py-2 rounded-lg text-sm">
+        <div className="bg-emerald-50 text-emerald-700 font-semibold px-4 py-2 rounded-lg text-sm">
           {expenses.length} record(s)
         </div>
       </div>
@@ -195,7 +254,7 @@ export function ExpensesScreen() {
       {/* Expenses Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="record-list w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50 border-b text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 <th className="p-4">Date</th>
@@ -215,17 +274,21 @@ export function ExpensesScreen() {
               ) : (
                 expenses.map((exp) => (
                   <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-4 font-medium text-gray-900">{exp.expense_date}</td>
-                    <td className="p-4">
+                    <td data-label="Date" className="p-4 font-medium text-gray-900">
+                      {exp.expense_date}
+                    </td>
+                    <td data-label="Category" className="p-4">
                       <span className="bg-gray-100 text-gray-800 text-xs px-2.5 py-1 rounded-full font-medium">
                         {exp.category}
                       </span>
                     </td>
-                    <td className="p-4 text-gray-600">{exp.note || '—'}</td>
-                    <td className="p-4 text-right font-bold text-red-600">
+                    <td data-label="Note / Description" className="p-4 text-gray-600">
+                      {exp.note || '—'}
+                    </td>
+                    <td data-label="Amount" className="p-4 text-right font-bold text-red-600">
                       -{formatMoney(exp.amount, 0, currency)}
                     </td>
-                    <td className="p-4 text-right space-x-2">
+                    <td data-label="Actions" className="p-4 text-right space-x-2">
                       <button
                         onClick={() => openEditModal(exp)}
                         className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium min-h-11 inline-flex items-center"
@@ -246,92 +309,6 @@ export function ExpensesScreen() {
           </table>
         </div>
       </div>
-
-      {/* Add / Edit Expense Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
-            <div className="p-4 bg-gray-900 text-white flex justify-between items-center">
-              <h3 className="font-bold text-lg">{editingExpenseId ? 'Edit Expense' : 'Add Expense'}</h3>
-              <button
-                onClick={() => setModalOpen(false)}
-                className="text-gray-400 hover:text-white font-bold text-xl px-2"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveExpense} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={expenseDate}
-                  onChange={(e) => setExpenseDate(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
-                >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Amount ({currency})</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={amountInput}
-                  onChange={(e) => setAmountInput(e.target.value)}
-                  placeholder="e.g. 5000"
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Note / Reference</label>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Optional details or vendor name..."
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2.5 border rounded-xl hover:bg-gray-100 font-medium text-sm text-gray-700 min-h-11"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="bg-blue-700 hover:bg-blue-800 disabled:bg-gray-300 text-white font-bold py-2.5 px-6 rounded-xl text-sm shadow transition-colors min-h-11"
-                >
-                  {submitting ? 'Saving...' : 'Save Expense'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

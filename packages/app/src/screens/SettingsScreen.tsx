@@ -309,7 +309,7 @@ export function SettingsScreen() {
 
             <button
               type="submit"
-              className="rounded bg-blue-700 text-white px-5 py-3 min-h-11 font-medium hover:bg-blue-800"
+              className="rounded bg-emerald-700 text-white px-5 py-3 min-h-11 font-medium hover:bg-emerald-800"
             >
               Save Shop Changes
             </button>
@@ -401,7 +401,7 @@ export function SettingsScreen() {
                   'Supabase configuration saved.',
                 )
               }
-              className="rounded bg-blue-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-blue-800 disabled:opacity-50"
+              className="rounded bg-emerald-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-emerald-800 disabled:opacity-50"
             >
               Save Configuration
             </button>
@@ -458,7 +458,7 @@ export function SettingsScreen() {
                       'Signed in successfully.',
                     )
                   }
-                  className="rounded bg-blue-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-blue-800 disabled:opacity-50"
+                  className="rounded bg-emerald-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-emerald-800 disabled:opacity-50"
                 >
                   Sign In
                 </button>
@@ -533,7 +533,7 @@ export function SettingsScreen() {
                       onClick={() =>
                         void runCloudAction(() => sync.syncNow(), 'Sync completed successfully.')
                       }
-                      className="rounded bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 text-sm font-medium min-h-11 disabled:opacity-50"
+                      className="rounded bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-sm font-medium min-h-11 disabled:opacity-50"
                     >
                       {sync.status.isSyncing ? 'Syncing...' : 'Sync Now'}
                     </button>
@@ -574,7 +574,7 @@ export function SettingsScreen() {
 
       <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
         <h2 className="text-xl font-semibold text-gray-800">Security & PIN Lock</h2>
-        {pinMessage && <p className="text-sm font-medium text-blue-700">{pinMessage}</p>}
+        {pinMessage && <p className="text-sm font-medium text-emerald-700">{pinMessage}</p>}
         <form onSubmit={handleSavePin} className="space-y-4 max-w-md">
           {settings['pin_hash'] && (
             <div>
@@ -619,7 +619,7 @@ export function SettingsScreen() {
 
           <button
             type="submit"
-            className="rounded bg-blue-700 text-white px-5 py-3 min-h-11 font-medium hover:bg-blue-800"
+            className="rounded bg-emerald-700 text-white px-5 py-3 min-h-11 font-medium hover:bg-emerald-800"
           >
             Update PIN Settings
           </button>
@@ -715,7 +715,7 @@ export function SettingsScreen() {
                 setBackupError('Failed to export backup');
               }
             }}
-            className="rounded bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 font-medium min-h-11 shadow"
+            className="rounded bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 font-medium min-h-11 shadow"
           >
             Export Backup (.vfbackup)
           </button>

@@ -469,7 +469,6 @@ export function ProductsScreen() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Products & Catalog</h1>
-          <p className="text-gray-600">Manage products, variants, pricing, and opening stock.</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -486,7 +485,7 @@ export function ProductsScreen() {
           </button>
           <button
             onClick={handleOpenCreate}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
           >
             + Add Product
           </button>
@@ -511,12 +510,12 @@ export function ProductsScreen() {
           placeholder="Search by name, SKU, or barcode..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-blue-500 outline-none"
+          className="flex-1 px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
         />
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-4 py-2.5 border rounded-lg min-h-11 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+          className="px-4 py-2.5 border rounded-lg min-h-11 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
         >
           <option value="all">All Categories</option>
           {categories.map((c) => (
@@ -530,7 +529,7 @@ export function ProductsScreen() {
       {/* Product Grid / Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="record-list w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-100 border-b text-gray-700 text-sm">
                 <th className="p-4 font-semibold">Product / Brand</th>
@@ -566,19 +565,19 @@ export function ProductsScreen() {
 
                   return (
                     <tr key={p.id} className="hover:bg-gray-50">
-                      <td className="p-4">
+                      <td data-label="Product / Brand" className="p-4">
                         <div className="font-semibold text-gray-900">{p.name}</div>
                         {p.brand && <div className="text-xs text-gray-500">{p.brand}</div>}
                       </td>
-                      <td className="p-4 text-gray-600">{cat?.name ?? 'Uncategorized'}</td>
-                      <td className="p-4">
-                        <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full text-xs font-semibold">
+                      <td data-label="Category" className="p-4 text-gray-600">{cat?.name ?? 'Uncategorized'}</td>
+                      <td data-label="Variants" className="p-4">
+                        <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold">
                           {vars.length} variant{vars.length === 1 ? '' : 's'}
                         </span>
                       </td>
-                      <td className="p-4 font-medium text-gray-800">{priceStr}</td>
-                      <td className="p-4 font-semibold text-gray-900">{totalStock}</td>
-                      <td className="p-4 text-right space-x-2">
+                      <td data-label="Price Range" className="p-4 font-medium text-gray-800">{priceStr}</td>
+                      <td data-label="Total Stock" className="p-4 font-semibold text-gray-900">{totalStock}</td>
+                      <td data-label="Actions" className="p-4 text-right space-x-2">
                         {vars.length > 0 && (
                           <button
                             onClick={() => handleOpenLabels(p)}
@@ -589,7 +588,7 @@ export function ProductsScreen() {
                         )}
                         <button
                           onClick={() => void handleOpenEdit(p)}
-                          className="px-3 py-1.5 border rounded text-blue-600 hover:bg-blue-50 min-h-11 font-medium"
+                          className="px-3 py-1.5 border rounded text-emerald-600 hover:bg-emerald-50 min-h-11 font-medium"
                         >
                           Edit
                         </button>
@@ -669,7 +668,7 @@ export function ProductsScreen() {
               <button
                 onClick={handlePrintLabels}
                 disabled={labelSelected.length === 0}
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
               >
                 Print {labelSelected.length} label{labelSelected.length === 1 ? '' : 's'}
               </button>
@@ -732,7 +731,7 @@ export function ProductsScreen() {
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
                     placeholder="e.g. Premium Pod Kit"
                   />
                 </div>
@@ -742,7 +741,7 @@ export function ProductsScreen() {
                     <select
                       value={formCategoryId}
                       onChange={(e) => setFormCategoryId(e.target.value)}
-                      className="flex-1 px-4 py-2.5 border rounded-lg min-h-11 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="flex-1 px-4 py-2.5 border rounded-lg min-h-11 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
                     >
                       <option value="">Uncategorized</option>
                       {categories.map((c) => (
@@ -754,7 +753,7 @@ export function ProductsScreen() {
                     <button
                       type="button"
                       onClick={() => setShowNewCatInput(!showNewCatInput)}
-                      className="px-3 py-2 border rounded-lg bg-gray-50 text-blue-600 font-medium hover:bg-gray-100 min-h-11"
+                      className="px-3 py-2 border rounded-lg bg-gray-50 text-emerald-600 font-medium hover:bg-gray-100 min-h-11"
                     >
                       + New
                     </button>
@@ -771,7 +770,7 @@ export function ProductsScreen() {
                       <button
                         type="button"
                         onClick={() => void handleInlineCategoryCreate()}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium min-h-11"
+                        className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium min-h-11"
                       >
                         Add
                       </button>
@@ -787,7 +786,7 @@ export function ProductsScreen() {
                     type="text"
                     value={formBrand}
                     onChange={(e) => setFormBrand(e.target.value)}
-                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
                     placeholder="e.g. Smok / Vaporesso"
                   />
                 </div>
@@ -797,7 +796,7 @@ export function ProductsScreen() {
                     type="text"
                     value={formNotes}
                     onChange={(e) => setFormNotes(e.target.value)}
-                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
                     placeholder="Optional notes"
                   />
                 </div>
@@ -1048,7 +1047,7 @@ export function ProductsScreen() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg min-h-11 font-medium shadow"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg min-h-11 font-medium shadow"
                 >
                   Save Product
                 </button>
@@ -1073,10 +1072,10 @@ export function ProductsScreen() {
             </div>
 
             <div className="space-y-4">
-              <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-200">
+              <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-xl border border-emerald-200">
                 <div>
-                  <h3 className="font-semibold text-blue-900">Need the CSV template?</h3>
-                  <p className="text-sm text-blue-700">Download the formatted template with required headers and example rows.</p>
+                  <h3 className="font-semibold text-emerald-900">Need the CSV template?</h3>
+                  <p className="text-sm text-emerald-700">Download the formatted template with required headers and example rows.</p>
                 </div>
                 <button
                   onClick={() => {
@@ -1089,7 +1088,7 @@ export function ProductsScreen() {
                     a.click();
                     URL.revokeObjectURL(url);
                   }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium min-h-11"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium min-h-11"
                 >
                   Download Template
                 </button>
@@ -1115,7 +1114,7 @@ export function ProductsScreen() {
                     };
                     reader.readAsText(file);
                   }}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
                 />
               </div>
 
@@ -1215,7 +1214,7 @@ export function ProductsScreen() {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2.5">
                     <div
-                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-200"
+                      className="bg-emerald-600 h-2.5 rounded-full transition-all duration-200"
                       style={{ width: `${(csvProgress.current / (csvProgress.total || 1)) * 100}%` }}
                     />
                   </div>
@@ -1276,7 +1275,7 @@ export function ProductsScreen() {
                     setCsvImporting(false);
                   }
                 }}
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
               >
                 {csvImporting ? 'Importing...' : `Import ${csvPreviewRows.filter(r => r.errors.length === 0).length} Valid Rows`}
               </button>

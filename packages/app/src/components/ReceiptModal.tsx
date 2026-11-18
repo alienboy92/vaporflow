@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Shop, Sale, SaleItem, formatMoney } from '@vaporflow/core';
 import { usePlatform } from '../context/DbProvider';
 import { buildReceiptHtml, RECEIPT_CSS } from '../utils/receipt-html';
@@ -9,9 +10,12 @@ interface ReceiptModalProps {
   result: { sale: Sale; items: SaleItem[] };
   shop: Shop;
   onClose: () => void;
+  historyPanel?: boolean;
+  newSale?: boolean;
+  actions?: ReactNode;
 }
 
-export function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
+export function ReceiptModal({ result, shop, onClose, historyPanel, actions, newSale }: ReceiptModalProps) {
   const { sale, items } = result;
   const platform = usePlatform();
   const currency = shop.currency_code ?? 'PKR';
@@ -37,7 +41,7 @@ export function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+    <div className={historyPanel ? "history-detail" : "fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-4 bg-gray-900 text-white flex justify-between items-center">
           <h3 className="font-bold text-lg">Receipt Details ({sale.receipt_no})</h3>
@@ -131,6 +135,7 @@ export function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
           </div>
         </div>
 
+        {actions}
         <div className="p-4 bg-gray-50 border-t flex gap-3">
           <button
             onClick={handlePrint}
@@ -140,7 +145,7 @@ export function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
           </button>
           <button
             onClick={() => void handleShare()}
-            className="flex-1 bg-blue-700 hover:bg-blue-800 text-white font-medium py-2.5 px-4 rounded-xl min-h-11 flex items-center justify-center gap-2"
+            className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-medium py-2.5 px-4 rounded-xl min-h-11 flex items-center justify-center gap-2"
           >
             Share PDF
           </button>
@@ -148,7 +153,7 @@ export function ReceiptModal({ result, shop, onClose }: ReceiptModalProps) {
             onClick={onClose}
             className="px-4 py-2.5 border rounded-xl hover:bg-gray-100 font-medium min-h-11 text-gray-700"
           >
-            Close
+            {newSale ? 'New sale' : 'Close'}
           </button>
         </div>
       </div>

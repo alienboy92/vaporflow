@@ -60,7 +60,7 @@ export function DbCheck() {
         <button
           disabled={busy}
           onClick={() => void run(true)}
-          className="min-h-11 rounded bg-blue-700 px-4 text-white disabled:opacity-50"
+          className="min-h-11 rounded bg-emerald-700 px-4 text-white disabled:opacity-50"
         >
           Create fixture
         </button>

@@ -120,11 +120,12 @@ export function StockScreen() {
     );
   }
 
-  function handleOpenStockIn() {
+  function handleOpenStockIn(variantId?: string) {
+    const selected = allVariants.find(v => v.variant_id === variantId) ?? allVariants[0];
     setStockInItems([
       {
-        variantId: allVariants[0]?.variant_id ?? '',
-        variantLabel: allVariants[0]?.label ?? '',
+        variantId: selected?.variant_id ?? '',
+        variantLabel: selected?.label ?? '',
         qty: '10',
         unitCost: '',
         note: 'Restock shipment',
@@ -274,12 +275,11 @@ export function StockScreen() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Stock & Inventory</h1>
-          <p className="text-gray-600">Track on-hand stock, restock shipments, and perform adjustments.</p>
         </div>
         <div className="flex gap-3">
           <button
-            onClick={handleOpenStockIn}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
+            onClick={() => handleOpenStockIn()}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
           >
             + Stock In
           </button>
@@ -306,7 +306,7 @@ export function StockScreen() {
               onClick={() => setFilter(tab)}
               className={`px-4 py-2 rounded-lg font-medium text-sm min-h-11 capitalize transition-colors ${
                 filter === tab
-                  ? 'bg-blue-700 text-white'
+                  ? 'bg-emerald-700 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -319,14 +319,14 @@ export function StockScreen() {
           placeholder="Search inventory..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full md:w-80 px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-blue-500 outline-none"
+          className="w-full md:w-80 px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
         />
       </div>
 
       {/* Inventory Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="record-list w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-100 border-b text-gray-700 text-sm">
                 <th className="p-4 font-semibold">Product / Variant</th>
@@ -352,16 +352,16 @@ export function StockScreen() {
 
                   return (
                     <tr key={item.variant_id} className="hover:bg-gray-50">
-                      <td className="p-4">
+                      <td data-label="Product / Variant" className="p-4">
                         <div className="font-semibold text-gray-900">{item.product_name}</div>
                         <div className="text-xs text-gray-600">{item.variant_name}</div>
                       </td>
-                      <td className="p-4 text-gray-600">
+                      <td data-label="SKU / Barcode" className="p-4 text-gray-600">
                         <div>{item.sku || '—'}</div>
                         <div className="text-xs font-mono text-gray-400">{item.barcode || '—'}</div>
                       </td>
-                      <td className="p-4 font-medium text-gray-800">PKR {item.sale_price}</td>
-                      <td className="p-4">
+                      <td data-label="Price" className="p-4 font-medium text-gray-800">PKR {item.sale_price}</td>
+                      <td data-label="On Hand" className="p-4">
                         <span
                           className={`text-base font-bold ${
                             isNegative
@@ -376,7 +376,7 @@ export function StockScreen() {
                           {item.on_hand}
                         </span>
                       </td>
-                      <td className="p-4">
+                      <td data-label="Status / Threshold" className="p-4">
                         {isNegative ? (
                           <span className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full text-xs font-semibold">
                             Negative
@@ -395,10 +395,12 @@ export function StockScreen() {
                           </span>
                         )}
                       </td>
-                      <td className="p-4 text-right space-x-2">
+                      <td data-label="Actions" className="p-4 text-right space-x-2">
+                        <button className="min-h-11 px-3 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-semibold"
+                          onClick={() => handleOpenStockIn(item.variant_id)}>Stock In</button>
                         <button
                           onClick={() => handleOpenAdjust(item)}
-                          className="px-3 py-1.5 border rounded text-blue-600 hover:bg-blue-50 min-h-11 font-medium"
+                          className="px-3 py-1.5 border rounded text-emerald-600 hover:bg-emerald-50 min-h-11 font-medium"
                         >
                           Adjust
                         </button>
@@ -548,7 +550,7 @@ export function StockScreen() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg min-h-11 font-medium shadow"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg min-h-11 font-medium shadow"
                 >
                   Complete Stock In
                 </button>
@@ -576,7 +578,7 @@ export function StockScreen() {
                   required
                   value={adjustCountedQty}
                   onChange={(e) => setAdjustCountedQty(e.target.value)}
-                  className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
               <div>
@@ -587,7 +589,7 @@ export function StockScreen() {
                   value={adjustNote}
                   onChange={(e) => setAdjustNote(e.target.value)}
                   placeholder="e.g. Broken items found during monthly recount"
-                  className="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
 
@@ -601,7 +603,7 @@ export function StockScreen() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg min-h-11 font-medium"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg min-h-11 font-medium"
                 >
                   Save Adjustment
                 </button>

@@ -113,7 +113,6 @@ export function ReportsScreen() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Profit & Loss Reports</h1>
-          <p className="text-sm text-gray-600">Financial performance, revenue, COGS, expenses, and top-selling items.</p>
         </div>
       </div>
 
@@ -134,7 +133,7 @@ export function ReportsScreen() {
                 updateRangeByPreset(p);
               }}
               className={`px-3 py-2 rounded-lg text-xs font-medium min-h-11 transition-colors ${
-                preset === p ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                preset === p ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               {p === 'today' && 'Today'}
@@ -146,7 +145,7 @@ export function ReportsScreen() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
             <input
@@ -176,7 +175,7 @@ export function ReportsScreen() {
 
       {/* P&L Cards (SPEC §8.10) */}
       {pnl && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="report-metrics grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="bg-white p-5 rounded-xl border shadow-sm space-y-1">
             <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Net Revenue</span>
             <div className="text-2xl font-bold text-gray-900">{formatMoney(pnl.net_revenue, 0, currency)}</div>
@@ -191,11 +190,17 @@ export function ReportsScreen() {
 
           <div className="bg-white p-5 rounded-xl border shadow-sm space-y-1">
             <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Gross Profit</span>
-            <div className="text-2xl font-bold text-blue-700">{formatMoney(pnl.gross_profit, 0, currency)}</div>
+            <div className="text-2xl font-bold text-emerald-700">{formatMoney(pnl.gross_profit, 0, currency)}</div>
             <div className="text-xs text-gray-500">Revenue minus COGS</div>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border shadow-sm space-y-1">
+          <div className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center">
+            <div>
+              <span className="text-xs font-medium text-gray-500">Total Expenses</span>
+              <div className="text-lg font-bold text-gray-900 mt-0.5">{formatMoney(pnl.expenses_total, 0, currency)}</div>
+            </div>
+          </div>
+          <div data-negative={pnl.net_profit < 0} className="bg-white p-5 rounded-xl border shadow-sm space-y-1">
             <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Net Profit</span>
             <div className={`text-2xl font-bold ${pnl.net_profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
               {formatMoney(pnl.net_profit, 0, currency)}
@@ -207,27 +212,19 @@ export function ReportsScreen() {
 
       {/* Secondary Metrics Cards */}
       {pnl && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center">
-            <div>
-              <span className="text-xs font-medium text-gray-500">Total Expenses</span>
-              <div className="text-lg font-bold text-gray-900 mt-0.5">{formatMoney(pnl.expenses_total, 0, currency)}</div>
-            </div>
-            <span className="bg-red-50 text-red-700 text-xs px-2.5 py-1 rounded-full font-medium">Operating</span>
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+
           <div className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center">
             <div>
               <span className="text-xs font-medium text-gray-500">Cash Sales Total</span>
               <div className="text-lg font-bold text-gray-900 mt-0.5">{formatMoney(pnl.cash_total, 0, currency)}</div>
             </div>
-            <span className="bg-green-50 text-green-700 text-xs px-2.5 py-1 rounded-full font-medium">Cash</span>
           </div>
           <div className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center">
             <div>
               <span className="text-xs font-medium text-gray-500">Online / Card Sales Total</span>
               <div className="text-lg font-bold text-gray-900 mt-0.5">{formatMoney(pnl.online_total, 0, currency)}</div>
             </div>
-            <span className="bg-blue-50 text-blue-700 text-xs px-2.5 py-1 rounded-full font-medium">Online</span>
           </div>
         </div>
       )}
@@ -249,8 +246,8 @@ export function ReportsScreen() {
                   contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e5e7eb' }}
                 />
                 <Legend />
-                <Bar dataKey="revenue" name="Revenue" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                <Line type="monotone" dataKey="profit" name="Net Profit" stroke="#16a34a" strokeWidth={2} dot={{ r: 4 }} />
+                <Bar dataKey="revenue" name="Revenue" fill="#059669" radius={[4, 4, 0, 0]} />
+                <Line type="monotone" dataKey="profit" name="Net Profit" stroke="#334155" strokeWidth={2} dot={{ r: 4 }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -281,7 +278,7 @@ export function ReportsScreen() {
                       <td className="py-3 font-medium text-gray-900">
                         {idx + 1}. {item.product_name} <span className="text-gray-500 text-xs font-normal">({item.variant_name})</span>
                       </td>
-                      <td className="py-3 text-right font-bold text-blue-700">{item.value}</td>
+                      <td className="py-3 text-right font-bold text-emerald-700">{item.value}</td>
                     </tr>
                   ))
                 )}

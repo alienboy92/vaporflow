@@ -30,7 +30,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             onClick={() => setMode('create')}
             className={`flex-1 rounded p-2.5 min-h-11 font-medium border ${
               mode === 'create'
-                ? 'bg-blue-700 text-white border-blue-700'
+                ? 'bg-emerald-700 text-white border-emerald-700'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
             }`}
           >
@@ -43,7 +43,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             onClick={() => setMode('join')}
             className={`flex-1 rounded p-2.5 min-h-11 font-medium border ${
               mode === 'join'
-                ? 'bg-blue-700 text-white border-blue-700'
+                ? 'bg-emerald-700 text-white border-emerald-700'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
             }`}
           >
@@ -163,7 +163,7 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
         <input
           type="text"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Vapor Central"
@@ -174,7 +174,7 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
         <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
         <input
           type="text"
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           placeholder="e.g. Shop 4, Plaza Market"
@@ -185,7 +185,7 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
         <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
         <input
           type="text"
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="e.g. 03001234567"
@@ -199,7 +199,7 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
             type="text"
             required
             maxLength={4}
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base uppercase focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base uppercase focus:ring-2 focus:ring-emerald-500"
             value={deviceCode}
             onChange={(e) => setDeviceCode(e.target.value.toUpperCase())}
             placeholder="PC1 or PH1"
@@ -210,7 +210,7 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
           <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
           <input
             type="text"
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
             value={deviceName}
             onChange={(e) => setDeviceName(e.target.value)}
             placeholder="e.g. Counter PC"
@@ -223,7 +223,7 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
         <input
           type="file"
           accept="image/*"
-          className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 min-h-11"
+          className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 min-h-11"
           onChange={handleLogoChange}
         />
         {logoError && <p className="text-sm text-red-600 mt-1">{logoError}</p>}
@@ -246,7 +246,7 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded bg-blue-700 text-white p-3 min-h-11 font-medium hover:bg-blue-800 disabled:opacity-50"
+          className="w-full rounded bg-emerald-700 text-white p-3 min-h-11 font-medium hover:bg-emerald-800 disabled:opacity-50"
         >
           {submitting ? 'Setting up...' : 'Save & Start'}
         </button>
@@ -305,14 +305,14 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
         </div>
         <div>
           <span className="block text-sm font-medium text-gray-700 mb-1">This device&apos;s code</span>
-          <span className="text-2xl font-mono font-bold tracking-widest text-blue-800">{joinedCode}</span>
+          <span className="text-2xl font-mono font-bold tracking-widest text-emerald-800">{joinedCode}</span>
           <p className="text-xs text-gray-500 mt-1">
             The owner device will see this code in Settings → Cloud Connection → Devices.
           </p>        </div>
         <button
           type="button"
           onClick={onComplete}
-          className="w-full rounded bg-blue-700 text-white p-3 min-h-11 font-medium hover:bg-blue-800"
+          className="w-full rounded bg-emerald-700 text-white p-3 min-h-11 font-medium hover:bg-emerald-800"
         >
           Start using VaporFlow
         </button>
@@ -338,7 +338,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
         <input
           type="url"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
           value={supabaseUrl}
           onChange={(e) => setSupabaseUrl(e.target.value)}
           placeholder="https://xxxx.supabase.co"
@@ -350,7 +350,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
         <input
           type="password"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
           value={anonKey}
           onChange={(e) => setAnonKey(e.target.value)}
           placeholder="Paste the anon (public) key"
@@ -364,7 +364,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
             type="email"
             required
             autoComplete="email"
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
@@ -376,7 +376,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
             type="password"
             required
             autoComplete="current-password"
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Cloud account password"
@@ -389,7 +389,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
         <input
           type="text"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base font-mono focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base font-mono focus:ring-2 focus:ring-emerald-500"
           value={shopId}
           onChange={(e) => setShopId(e.target.value)}
           placeholder="UUID from the owner device's Settings"
@@ -400,7 +400,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
         <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
         <input
           type="text"
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
           value={deviceName}
           onChange={(e) => setDeviceName(e.target.value)}
           placeholder="e.g. Counter Phone"
@@ -411,7 +411,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
         <button
           type="submit"
           disabled={submitting || sync.busy}
-          className="w-full rounded bg-blue-700 text-white p-3 min-h-11 font-medium hover:bg-blue-800 disabled:opacity-50"
+          className="w-full rounded bg-emerald-700 text-white p-3 min-h-11 font-medium hover:bg-emerald-800 disabled:opacity-50"
         >
           {submitting || sync.busy ? 'Joining shop...' : 'Join Shop & Sync'}
         </button>

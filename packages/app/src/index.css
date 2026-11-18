@@ -1,3 +1,132 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .pos-shell { @apply flex h-dvh overflow-hidden bg-slate-50 text-slate-900 antialiased; }
+  .pos-sidebar { @apply hidden md:flex flex-col w-60 shrink-0 bg-slate-950 text-slate-300; }
+  .pos-brand { @apply h-16 px-5 flex items-center gap-3 border-b border-slate-800 text-white; }
+  .brand-mark { @apply flex shrink-0 items-center justify-center w-9 h-9 rounded-xl bg-emerald-500 text-slate-950; }
+  .pos-brand small, .pos-header small { @apply truncate text-[11px] text-slate-500; }
+  .pos-brand small { @apply block text-slate-400; }
+  .pos-sidebar nav { @apply flex-1 overflow-auto px-3 py-4 space-y-1; }
+  .pos-sidebar nav a, .more-link { @apply flex items-center gap-3 px-4 min-h-12 rounded-xl text-sm font-semibold; }
+  .pos-sidebar nav a:hover { @apply bg-slate-900; }
+  .pos-sidebar nav a[aria-current] { @apply bg-emerald-600 text-white; }
+  .stock-count { @apply ml-auto rounded-full px-2 py-0.5 text-xs font-bold bg-rose-600 text-white; }
+  .pos-sidebar footer { @apply border-t border-slate-800 flex justify-between p-4 text-xs; }
+  .pos-workspace { @apply flex-1 min-w-0 flex flex-col; }
+  .pos-header { @apply relative z-20 h-14 md:h-16 px-3 md:px-6 shrink-0 bg-white border-b border-slate-200 flex items-center gap-3; }
+  .pos-main { @apply flex-1 overflow-y-auto min-h-0 pb-24 md:pb-0; }
+  .icon-button { @apply min-w-11 min-h-11 inline-flex items-center justify-center rounded-xl hover:bg-slate-100; }
+  .phone-nav { @apply fixed md:hidden z-40 left-3 right-3 flex items-center justify-around h-16 rounded-full border border-slate-200 px-2 bg-white/95 shadow-lg backdrop-blur; bottom: calc(.6rem + env(safe-area-inset-bottom)); }
+  .phone-nav > * { @apply relative flex flex-1 flex-col items-center justify-center min-h-12 rounded-full text-[10px] font-semibold text-slate-500; }
+  .phone-nav [aria-current], .phone-nav .selected { @apply bg-emerald-50 text-emerald-700; }
+  .phone-nav .stock-count { @apply absolute -top-1 right-0 text-[9px]; }
+  .sync-badge { @apply relative; }
+  .sync-badge summary { @apply flex items-center gap-2 cursor-pointer px-3 min-h-11 border rounded-full text-xs font-semibold list-none; }
+  .sync-badge summary::before { content: ''; @apply w-2 h-2 rounded-full bg-current; }
+  .sync-badge .offline, .pick-meta .low { @apply text-amber-800 bg-amber-50 border-amber-200; }
+  .sync-badge .synced { @apply text-emerald-700 bg-emerald-50 border-emerald-200; }
+  .sync-badge .pending { @apply text-sky-700 bg-sky-50 border-sky-200; }
+  .sync-badge .error, .pick-meta .out { @apply text-rose-700 bg-rose-50 border-rose-200; }
+  .sync-panel { @apply absolute right-0 top-full mt-2 w-60 p-4 bg-white border rounded-2xl shadow-lg text-sm space-y-2; }
+  .sync-panel a, .sync-panel button { @apply inline-flex items-center min-h-11 text-emerald-700 font-semibold; }
+  .pos-sheet { @apply w-full max-w-xl max-h-[90dvh] p-0 rounded-t-3xl bg-white border-0 shadow-xl overscroll-contain; margin: auto auto 0; padding-bottom: env(safe-area-inset-bottom); }
+  .pos-sheet::backdrop { background: rgb(15 23 42 / .55); }
+  .sale-layout { @apply grid items-start gap-4 p-3 md:p-5; }
+  .scan-panel { @apply bg-white p-3 border border-slate-200 rounded-t-2xl border-b-0; }
+  .scanner-row { @apply relative flex items-stretch gap-1.5; }
+  .scan-symbol { @apply absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none; }
+  .catalog-tools { @apply sticky top-0 bg-slate-50 z-10; }
+  .category-chips { @apply flex overflow-x-auto gap-2 px-3 pb-3 rounded-b-2xl bg-white border border-t-0; }
+  .category-chips button { @apply shrink-0 min-h-11 px-3 rounded-lg bg-slate-100 text-xs font-semibold text-slate-600; }
+  .category-chips [aria-pressed=true] { @apply bg-slate-900 text-white; }
+  .quick-grid { @apply mt-4 grid grid-cols-2 gap-2.5; grid-template-columns: repeat(auto-fill,minmax(min(145px,46%),1fr)); }
+  .pick-card { @apply relative min-w-0 min-h-28 text-left bg-white rounded-2xl border border-slate-200 p-3 shadow-sm flex flex-col gap-1 hover:border-emerald-400; }
+  .pick-card[data-selected=true] { @apply border-emerald-500 ring-1 ring-emerald-200; }
+  .pick-qty { @apply absolute -right-1 -top-2 bg-emerald-600 text-white text-[10px] px-1.5 rounded-full; }
+  .pick-card strong { @apply text-sm leading-snug; overflow-wrap: anywhere; }
+  .pick-meta, .pick-price { @apply flex items-center justify-between gap-1; }
+  .pick-meta > span { @apply truncate uppercase font-bold tracking-wide text-[9px] text-slate-500; }
+  .pick-meta small { @apply whitespace-nowrap text-[10px] px-1 rounded bg-slate-100 text-slate-600; }
+  .pick-price { @apply mt-auto pt-2 border-t border-slate-100 text-emerald-700 text-sm font-mono font-bold; }
+  .pick-price small { @apply text-[10px] text-slate-400; }
+  .catalog-empty { @apply col-span-full rounded-2xl border border-dashed bg-white py-12 text-center text-sm text-slate-500; }
+  .desktop-checkout { @apply hidden bg-white border rounded-2xl p-4 shadow-sm; }
+  .checkout-body { @apply space-y-4; }
+  .cart-dock { @apply fixed z-30 left-3 right-3 rounded-2xl bg-slate-900 text-white min-h-14 flex gap-3 items-center px-4 shadow-lg; bottom: calc(5.3rem + env(safe-area-inset-bottom)); }
+  .cart-dock[data-filled=true] { @apply bg-emerald-600; }
+  .cart-dock span { @apply flex flex-col text-left text-xs; }
+  .cart-dock b { @apply ml-auto font-mono; }
+  @media (min-width: 768px) {
+    .sale-layout { grid-template-columns: minmax(0,1fr) minmax(300px,38%); }
+    .desktop-checkout { @apply sticky top-4 block overflow-y-auto; max-height: calc(100dvh - 6rem); }
+    .cart-dock { @apply hidden; }
+  }
+  @media (max-width: 767px) {
+    .sale-layout { padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
+    .pos-main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+    .pos-main > div:not(.sale-layout) { @apply p-3 space-y-4; }
+    .pos-main h1 { @apply text-xl; }
+    .pos-main :is(input:not([type=checkbox]),select,button) { min-height: 44px; }
+    .record-list, .record-list tbody { @apply block w-full; }
+    .record-list thead { @apply sr-only; }
+    .record-list tbody { @apply grid gap-2 bg-slate-50; }
+    .record-list tbody tr { @apply grid grid-cols-2 items-start gap-x-3 gap-y-2 border rounded-2xl p-3 bg-white text-xs; }
+    .record-list td { @apply block p-0 text-left; overflow-wrap: anywhere; }
+    .record-list td:first-child, .record-list td:last-child { @apply col-span-full; }
+    .record-list td:first-child { @apply text-sm font-bold; }
+    .record-list td[data-label]:not(:first-child):not(:last-child)::before { content: attr(data-label); @apply block text-[10px] uppercase tracking-wider text-slate-500 font-semibold; }
+    .record-list td:last-child:not(:first-child) { @apply flex flex-wrap justify-end border-t pt-1; }
+    .pos-main div:has(> div > .record-list) { @apply bg-transparent border-0 shadow-none; }
+    .pos-main .fixed.inset-0 { @apply items-end p-0; }
+    .pos-main .fixed.inset-0 > div { @apply rounded-t-3xl rounded-b-none max-h-[92dvh] overflow-y-auto; }
+    .report-metrics > div { @apply p-3; }
+    .report-metrics > div:last-child { @apply order-first col-span-2 bg-emerald-950; }
+    .report-metrics > div[data-negative=true] { @apply bg-rose-950; }
+    .report-metrics > div:last-child :is(div,span) { @apply text-slate-200; }
+    .report-metrics > div:last-child .text-2xl { @apply text-white text-3xl; }
+  }
+}
+:focus-visible { outline: 3px solid #059669; outline-offset: 2px; }
+
+@layer components {
+  .expense-form { @apply grid gap-3 grid-cols-2 lg:grid-cols-4; }
+  .expense-form > div { @apply min-w-0; }
+  .sales-workspace { @apply grid gap-4 items-start; }
+  .history-empty { @apply hidden; }
+  .receipt-row { @apply w-full min-h-16 flex justify-between gap-3 items-center text-left p-3 rounded-2xl border bg-white; }
+  .receipt-row[aria-pressed=true] { @apply border-emerald-500 bg-emerald-50; }
+  .receipt-row strong { @apply font-mono text-sm; }
+  .receipt-row small { @apply block text-xs text-slate-500; }
+  .history-detail { @apply fixed inset-0 z-50 flex items-end justify-center bg-black/60; }
+  @media (min-width: 1100px) {
+    .sales-workspace { grid-template-columns: minmax(0,1fr) minmax(310px,34%); }
+    .history-empty { @apply block text-sm text-slate-500 text-center p-10 border border-dashed rounded-2xl; }
+    .history-detail { @apply sticky top-4 bg-transparent rounded-2xl border; }
+    .history-detail > div { @apply shadow-none max-w-full; }
+  }
+  @media (max-width: 767px) {
+    .report-metrics > div:last-child .text-green-700 { @apply text-emerald-300; }
+    .report-metrics > div:last-child .text-red-600 { @apply text-rose-300; }
+    .history-detail > div { @apply rounded-b-none; }
+    .pos-main input[type=date] { @apply min-w-0 max-w-full; }
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pick-qty { animation: quantity-added 240ms ease-out; }
+  @keyframes quantity-added { from { transform: scale(1.35); } to { transform: scale(1); } }
+}
+@media (min-width: 768px) {
+  .pos-shell[data-platform=android] .pos-sidebar,
+  .pos-shell[data-platform=android] .desktop-checkout,
+  .pos-shell[data-platform=android] .pos-header .hidden { display: none; }
+  .pos-shell[data-platform=android] .phone-nav,
+  .pos-shell[data-platform=android] .cart-dock,
+  .pos-shell[data-platform=android] .pos-header .brand-mark { display: flex; }
+  .pos-shell[data-platform=android] .pos-header :is(strong,small):not(.hidden) { display: block; }
+  .pos-shell[data-platform=android] .sale-layout { grid-template-columns: 1fr; padding-bottom: 5rem; }
+  .pos-shell[data-platform=android] .pos-main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+}
