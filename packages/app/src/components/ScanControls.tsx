@@ -39,7 +39,8 @@ export function CameraScanButton({ onScan, onError, disabled }: CameraScanButton
       disabled={disabled || scanning}
       onClick={() => void handleClick()}
       title="Scan with camera"
-      className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-3 min-h-11 text-base font-medium hover:bg-gray-100 disabled:opacity-50"
+      aria-label="Scan with camera"
+      className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-3 min-w-11 min-h-11 text-base font-medium hover:bg-gray-100 disabled:opacity-50"
     >
       {scanning ? '…' : '📷'}
     </button>

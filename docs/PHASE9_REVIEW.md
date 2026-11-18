@@ -51,6 +51,14 @@ Verified with fixture data on-device: barcode→cart add, cart-abandon confirm (
 
 ## Known issues / notes
 
+### 18 November device retest
+
+On a Samsung SM-A055F, the Products CSV importer added 20 new products under **Scan QA**, each with a unique generated barcode, price PKR 2 and opening quantity 5. Android keyboard events entered all 20 barcodes into Sale in wedge mode. The cart showed 20 items and PKR 40. Three consecutive entries of the same existing barcode separately produced quantity 3. Confirming Android Back cleared the test cart. No checkout was posted. The fixtures remain in the phone's local catalog.
+
+Sale, Products, Stock, Sales, Reports, Expenses and Settings had no page-level horizontal overflow at native width (384 CSS pixels) or at an emulated 390 × 844 on the phone. The camera button fell below the required 44 px width. The shared button now has a minimum width and an accessible label. The scanner adapter requests the Google scanner module when missing and surfaces scan failures while handling native cancellation quietly. Two regression tests exercise these paths.
+
+Physical OTG equipment and a set of printed barcodes were unavailable. The 20-code run exercised simulated keyboard input. The full transaction/share/restore walkthrough and physical cloud-reconnect checks remain open. Immediate resume after minimizing retained the unlocked screen in this session. The PIN lock follows its configured idle deadline on resume.
+
 - Navigating away from the sale screen by the bottom nav (not the Back button) still discards the cart without confirmation — pre-existing Phase 5 behavior, unchanged; the Back-button confirm now matches the prompt's wording ("abandoning an active sale").
 - Camera scan in Stock In matches exact barcodes only (the same rule as sale-scan exact match); partial matches intentionally do not select a variant to avoid restocking the wrong item.
 - `window.confirm` renders as a system dialog in the Android WebView — acceptable for the confirm-abandon prompt; a custom sheet can replace it later if the walkthrough shows friction.

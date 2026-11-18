@@ -48,3 +48,5 @@ Still NOT RUN (needs physical hardware / wall-clock, cannot run from one machine
 | 10 — Release           | NOT STARTED                    | Packaged install/update acceptance                                          |
 
 Never mark an unrun hardware check as passed.
+
+18 November retest — 167 automated tests passed and 8 opt-in checks were skipped in the default run. Three dedicated hosted auth/sync tests passed separately. On the connected SM-A055F, 20 generated barcode fixtures and a repeated-barcode test passed via Android keyboard events. The phone layout audit found a narrow camera button. Repairs and outstanding physical acceptance checks are recorded in the [Phase 8B review](PHASE8B_REVIEW.md) and [Phase 9 review](PHASE9_REVIEW.md).
