@@ -40,13 +40,13 @@ async function launch() {
 assert.deepEqual(await launch(), {
   persisted: false,
   rolledBack: true,
-  migrations: 2,
+  migrationsVerified: true,
   renderer: true,
 });
 assert.deepEqual(await launch(), {
   persisted: true,
   rolledBack: true,
-  migrations: 2,
+  migrationsVerified: true,
   renderer: true,
 });
 console.log(

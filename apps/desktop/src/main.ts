@@ -1,10 +1,10 @@
+import { MIGRATIONS } from '@vaporflow/core';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import { ElectronDbAdapter } from './sqlite-adapter.js';
 import { assertSender, validateBatch, validateQuery } from './ipc-policy.js';
-import { readDevelopmentDbCheck, runDevelopmentDbCheck } from '@vaporflow/core';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const development = !app.isPackaged;
@@ -20,7 +20,6 @@ const entryUrl =
     ? 'http://localhost:5173/'
     : pathToFileURL(path.join(dirname, '..', 'renderer', 'index.html')).href;
 let database: ElectronDbAdapter | undefined;
-let diagnosticDatabase: ElectronDbAdapter | undefined;
 
 async function start(): Promise<void> {
   const dataPath = app.getPath('userData');
@@ -28,10 +27,6 @@ async function start(): Promise<void> {
   database = new ElectronDbAdapter(path.join(dataPath, 'vaporflow.sqlite'));
   // Do not serve UI/IPC against a partially migrated database.
   await database.migrate();
-  if (development && !smokeDirectory) {
-    diagnosticDatabase = new ElectronDbAdapter(path.join(dataPath, 'diagnostics.sqlite'));
-    await diagnosticDatabase.migrate();
-  }
   const window = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -44,7 +39,6 @@ async function start(): Promise<void> {
       nodeIntegration: false,
       sandbox: true,
       preload: path.join(dirname, 'preload.cjs'),
-      additionalArguments: diagnosticDatabase ? ['--vaporflow-diagnostics'] : [],
     },
   });
   const guard = (event: Electron.IpcMainInvokeEvent) =>
@@ -69,16 +63,6 @@ async function start(): Promise<void> {
     guard(event);
     await database!.migrate();
   });
-  if (diagnosticDatabase) {
-    ipcMain.handle('diagnostics:read', async (event) => {
-      guard(event);
-      return readDevelopmentDbCheck(diagnosticDatabase!);
-    });
-    ipcMain.handle('diagnostics:create', async (event) => {
-      guard(event);
-      return runDevelopmentDbCheck(diagnosticDatabase!);
-    });
-  }
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => {
     if (url.split('#')[0] !== entryUrl) event.preventDefault();
@@ -97,19 +81,19 @@ async function start(): Promise<void> {
     // Real renderer -> sandboxed preload -> validated main IPC. No production fixtures.
     const result: unknown = await window.webContents.executeJavaScript(`(async () => {
       const api = window.vaporflow;
-      if (!api || api.diagnostics) throw new Error('Missing bridge or exposed diagnostics');
+      if (!api) throw new Error('Missing bridge');
       await api.db.migrate();
-      const before = await api.db.query("SELECT value FROM settings WHERE key = 'phase2-smoke'");
-      await api.db.batch([{sql:"INSERT INTO settings(key,value) VALUES ('phase2-smoke','persisted') ON CONFLICT(key) DO NOTHING"}]);
+      const before = await api.db.query("SELECT value FROM settings WHERE key = 'smoke-persistence'");
+      await api.db.batch([{sql:"INSERT INTO settings(key,value) VALUES ('smoke-persistence','persisted') ON CONFLICT(key) DO NOTHING"}]);
       let rolledBack = false;
-      try { await api.db.batch([{sql:"INSERT INTO settings(key,value) VALUES ('phase2-failure','bad')"},{sql:'INSERT INTO missing_smoke_table VALUES (1)'}]); }
-      catch { rolledBack = (await api.db.query("SELECT * FROM settings WHERE key = 'phase2-failure'")).length === 0; }
+      try { await api.db.batch([{sql:"INSERT INTO settings(key,value) VALUES ('smoke-rollback','bad')"},{sql:'INSERT INTO missing_smoke_table VALUES (1)'}]); }
+      catch { rolledBack = (await api.db.query("SELECT * FROM settings WHERE key = 'smoke-rollback'")).length === 0; }
       if (!rolledBack) throw new Error('IPC batch failed rollback test');
       const migrations = await api.db.query('SELECT name FROM _migrations ORDER BY name');
-      if (migrations.length !== 2) throw new Error('Missing migrations');
-      for (let i = 0; i < 100 && !document.body.innerText.includes('VaporFlow — First-Run Setup'); i++) await new Promise(resolve => setTimeout(resolve, 50));
-      if (!document.body.innerText.includes('VaporFlow — First-Run Setup')) throw new Error('Renderer database provider did not initialize');
-      return { persisted: before[0]?.value === 'persisted', rolledBack, migrations: migrations.length, renderer: true };
+      if (JSON.stringify(migrations.map(row => row.name)) !== ${JSON.stringify(JSON.stringify(MIGRATIONS.map(migration => migration.name)))}) throw new Error('Missing migrations');
+      for (let i = 0; i < 100 && !document.body.innerText.includes('First-Run Setup'); i++) await new Promise(resolve => setTimeout(resolve, 50));
+      if (!document.body.innerText.includes('First-Run Setup')) throw new Error('Renderer database provider did not initialize');
+      return { persisted: before[0]?.value === 'persisted', rolledBack, migrationsVerified: true, renderer: true };
     })()`);
     console.log('VAPORFLOW_SMOKE ' + JSON.stringify(result));
     app.quit();
@@ -124,6 +108,5 @@ app
   });
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => {
-  diagnosticDatabase?.close();
   database?.close();
 });
