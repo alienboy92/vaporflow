@@ -1,0 +1,22 @@
+{
+  "name": "@vaporflow/capacitor-printer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Android system printing for VaporFlow receipts and label sheets",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "android/",
+    "index.js",
+    "index.d.ts"
+  ],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  }
+}
