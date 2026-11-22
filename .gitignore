@@ -26,3 +26,10 @@ memory/
 # Env
 .env
 .env.local
+
+# Local configuration and release signing
+.env*
+local.properties
+*.jks
+*.keystore
+keystore.properties
