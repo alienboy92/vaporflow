@@ -1,5 +1,5 @@
 /**
- * OTG keyboard-wedge preference (Phase 9).
+ * OTG keyboard-wedge preference.
  *
  * A USB-over-OTG scanner types into the focused field like a keyboard and
  * finishes with Enter. In wedge mode the field sets `inputMode="none"` so

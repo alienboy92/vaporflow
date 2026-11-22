@@ -1,3 +1,4 @@
+import { LockScreen } from './LockScreen';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { MemoryRouter } from 'react-router-dom';
@@ -149,7 +150,8 @@ it('keeps the picked quantity when Android Back closes checkout and filters the 
     id: shopId, shop_id: shopId, device_id: uuidv7(), created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(), deleted_at: null, server_updated_at: null, dirty: 0,
   };
-  state.db.query.mockImplementation(async (sql: string) => {
+  state.db.query.mockImplementation(async (sql: string, params: unknown[] = []) => {
+    if (sql.includes('FROM settings')) return Object.entries(state.values).filter(([key]) => !params.length || key === params[0]).map(([key, value]) => ({ key, value }));
     if (sql.includes('FROM shops')) return [{ ...row, name: 'Shop', address: null, phone: null,
       logo_base64: null, show_logo_on_receipt: 0, receipt_footer: '', default_low_stock_threshold: 2 }];
     if (sql.startsWith('SELECT * FROM categories')) return [
@@ -165,6 +167,7 @@ it('keeps the picked quantity when Android Back closes checkout and filters the 
     ];
     return [];
   });
+  state.values = { pin_hash: '', idle_lock_minutes: '1' };
   await mountShell('/');
   const root = renderer!.root;
   const card = () => root.findAllByProps({ className: 'pick-card' });
@@ -178,4 +181,10 @@ it('keeps the picked quantity when Android Back closes checkout and filters the 
   expect(card()).toHaveLength(0);
   act(() => root.findAllByType('button').find(b => b.children.includes('Cables'))!.props.onClick());
   expect(card()).toHaveLength(1);
+  state.values.pin_hash = 'configured';
+  await act(async () => { window.dispatchEvent(new Event('vaporflow-security-changed')); });
+  act(() => { vi.advanceTimersByTime(60000); });
+  expect(card()).toHaveLength(0);
+  await act(async () => root.findByType(LockScreen).props.onUnlock());
+  expect(root.findByProps({ className: 'pick-qty' }).children).toEqual(['1']);
 });

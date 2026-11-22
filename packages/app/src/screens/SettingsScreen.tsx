@@ -7,18 +7,20 @@ import {
   updatePin,
   exportBackupJson,
   validateBackupJson,
-  restoreBackup,
+  resetLocalDatabase,
+  APP_VERSION,
 } from '@vaporflow/core';
 import type { Shop, Device, VfBackup } from '@vaporflow/core';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
 import { registerBackHandler } from '../utils/back-nav';
-import { DbCheck } from './DbCheck';
+import { useToast } from '../components/Toast';
 
 export function SettingsScreen() {
   const db = useDb();
   const platform = usePlatform();
+  const toast = useToast();
   const [shop, setShop] = useState<Shop | null>(null);
   const [device, setDevice] = useState<Device | null>(null);
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -43,6 +45,13 @@ export function SettingsScreen() {
   const [restoring, setRestoring] = useState(false);
   const restoringRef = useRef(false);
 
+  // Clear Data state: full local reset back to the setup wizard.
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const resettingRef = useRef(false);
+  const [resetError, setResetError] = useState('');
+
   // Cloud & Sync state — session/engine/status live in CloudSyncProvider;
   // only the form inputs and transient messages are local here.
   const sync = useCloudSync();
@@ -54,6 +63,10 @@ export function SettingsScreen() {
   const [cloudError, setCloudError] = useState('');
   const [copiedShopId, setCopiedShopId] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
+
+  // Editable device code (receipt prefix). 2–4 uppercase letters/digits.
+  const [deviceCode, setDeviceCode] = useState('');
+  const [savingDeviceCode, setSavingDeviceCode] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -71,7 +84,10 @@ export function SettingsScreen() {
         setShop(activeShop);
         setDevices(await deviceRepo.getDevices(activeShop.id));
       }
-      if (activeDevice) setDevice(activeDevice);
+      if (activeDevice) {
+        setDevice(activeDevice);
+        setDeviceCode(activeDevice.code);
+      }
       setSettings(allSettings);
     } catch (err) {
       globalErrorLogger.log(err);
@@ -93,6 +109,16 @@ export function SettingsScreen() {
       return true;
     });
   }, [restoreModalOpen]);
+
+  // The clear-data confirmation is also dismissible with the back button.
+  useEffect(() => {
+    if (!resetModalOpen) return;
+    return registerBackHandler(() => {
+      if (resettingRef.current) return true;
+      setResetModalOpen(false);
+      return true;
+    });
+  }, [resetModalOpen]);
 
   // Wraps every cloud action so errors land in the panel instead of vanishing.
   async function runCloudAction(action: () => Promise<void>, successMessage?: string) {
@@ -168,6 +194,43 @@ export function SettingsScreen() {
     }
   }
 
+  async function handleSaveDeviceCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!device) return;
+    const code = deviceCode.trim().toUpperCase();
+    if (!/^[A-Z0-9]{2,4}$/.test(code)) {
+      setError('Device code must be 2–4 letters or digits (A–Z, 0–9).');
+      return;
+    }
+    if (code === device.code) {
+      setDeviceCode(device.code);
+      return;
+    }
+    if (!window.confirm(`Change this device's code from ${device.code} to ${code}? Future receipt numbers will use the new code.`)) {
+      setDeviceCode(device.code);
+      return;
+    }
+    setSavingDeviceCode(true);
+    setError('');
+    try {
+      const updated: Device = {
+        ...device,
+        code,
+        updated_at: new Date().toISOString(),
+        dirty: 1,
+      };
+      await new DeviceRepo(db).saveDevice(updated);
+      setDevice(updated);
+      toast.show('Device code updated');
+    } catch (err) {
+      globalErrorLogger.log(err);
+      setError(err instanceof Error ? err.message : 'Failed to update device code');
+      setDeviceCode(device.code);
+    } finally {
+      setSavingDeviceCode(false);
+    }
+  }
+
   async function handleIdleTimeoutChange(minutes: string) {
     try {
       const settingsRepo = new SettingsRepo(db);
@@ -179,52 +242,84 @@ export function SettingsScreen() {
     }
   }
 
+  /**
+   * Full local reset: drops every local table, re-runs migrations, clears the
+   * few browser preferences, then reloads into the setup wizard. Only allowed
+   * while no cloud account is signed in (the button is disabled otherwise).
+   */
+  async function handleClearData() {
+    if (resettingRef.current) return;
+    if (resetConfirm.trim().toUpperCase() !== 'DELETE') {
+      setResetError('Type DELETE to confirm.');
+      return;
+    }
+    setResetError('');
+    resettingRef.current = true;
+    setResetting(true);
+    try {
+      await resetLocalDatabase(db);
+      // Preferences (e.g. wedge mode) live in localStorage; storage may be
+      // unavailable, which must not mask a successful database reset.
+      try {
+        localStorage.clear();
+      } catch {
+        // Ignore: the database is already reset.
+      }
+      window.location.reload();
+    } catch (err) {
+      globalErrorLogger.log(err);
+      setResetError(err instanceof Error ? err.message : 'Could not clear local data.');
+      resettingRef.current = false;
+      setResetting(false);
+    }
+  }
+
   if (loading) {
     return (
-      <div className="p-6 text-gray-600" role="status">
+      <div className="vf-page text-sm text-slate-500" role="status">
         Loading settings...
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8 pb-12">
-      <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+    <div className="vf-page pb-12">
+      <p className="vf-sub">Shop, device, security, backup and sync configuration.</p>
 
       {error && (
-        <div role="alert" className="p-4 bg-red-50 text-red-700 rounded border border-red-200">
+        <div role="alert" className="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">
           {error}
         </div>
       )}
       {message && (
         <div
           role="status"
-          className="p-4 bg-green-50 text-green-700 rounded border border-green-200"
+          className="p-4 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200"
         >
           {message}
         </div>
       )}
 
       {shop && (
-        <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-          <h2 className="text-xl font-semibold text-gray-800">Shop Details</h2>
+        <section className="vf-card space-y-4 p-5">
+          <h2 className="vf-title">Shop Details</h2>
           <form onSubmit={handleSaveShop} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name</label>
+                <label className="vf-label">Shop Name</label>
                 <input
                   type="text"
                   required
-                  className="w-full rounded border border-gray-300 p-3 min-h-11"
+                  className="vf-input"
                   value={shop.name}
                   onChange={(e) => setShop({ ...shop, name: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <label className="vf-label">Phone</label>
                 <input
                   type="text"
-                  className="w-full rounded border border-gray-300 p-3 min-h-11"
+                  className="vf-input"
                   value={shop.phone || ''}
                   onChange={(e) => setShop({ ...shop, phone: e.target.value })}
                 />
@@ -232,10 +327,10 @@ export function SettingsScreen() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+              <label className="vf-label">Address</label>
               <input
                 type="text"
-                className="w-full rounded border border-gray-300 p-3 min-h-11"
+                className="vf-input"
                 value={shop.address || ''}
                 onChange={(e) => setShop({ ...shop, address: e.target.value })}
               />
@@ -243,24 +338,24 @@ export function SettingsScreen() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="vf-label">
                   Receipt Footer
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded border border-gray-300 p-3 min-h-11"
+                  className="vf-input"
                   value={shop.receipt_footer}
                   onChange={(e) => setShop({ ...shop, receipt_footer: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="vf-label">
                   Default Low Stock Threshold
                 </label>
                 <input
                   type="number"
                   min={0}
-                  className="w-full rounded border border-gray-300 p-3 min-h-11"
+                  className="vf-input"
                   value={shop.default_low_stock_threshold}
                   onChange={(e) =>
                     setShop({ ...shop, default_low_stock_threshold: Number(e.target.value) })
@@ -271,12 +366,12 @@ export function SettingsScreen() {
 
             <div className="flex items-center gap-4 pt-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Shop Logo</label>
+                <label className="vf-label">Shop Logo</label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleLogoChange}
-                  className="text-sm text-gray-500"
+                  className="vf-sub"
                 />
               </div>
               {shop.logo_base64 && (
@@ -298,7 +393,7 @@ export function SettingsScreen() {
                   </label>
                   <button
                     type="button"
-                    className="text-sm text-red-600 underline"
+                    className="text-sm text-rose-600 underline"
                     onClick={() => setShop({ ...shop, logo_base64: null, show_logo_on_receipt: 0 })}
                   >
                     Remove logo
@@ -309,7 +404,7 @@ export function SettingsScreen() {
 
             <button
               type="submit"
-              className="rounded bg-emerald-700 text-white px-5 py-3 min-h-11 font-medium hover:bg-emerald-800"
+              className="vf-btn-primary"
             >
               Save Shop Changes
             </button>
@@ -318,32 +413,54 @@ export function SettingsScreen() {
       )}
 
       {device && (
-        <section className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
-          <h2 className="text-xl font-semibold text-gray-800">Device Information</h2>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+        <section className="vf-card space-y-4 p-5">
+          <h2 className="vf-title">Device Information</h2>
+          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div>
-              <span className="text-gray-500 block">Device Code</span>
-              <span className="font-mono font-bold text-lg">{device.code}</span>
+              <span className="block text-slate-500">Device Name</span>
+              <span className="text-lg font-medium text-slate-900">{device.name}</span>
             </div>
-            <div>
-              <span className="text-gray-500 block">Device Name</span>
-              <span className="font-medium text-lg">{device.name}</span>
-            </div>
+            <form onSubmit={handleSaveDeviceCode} className="space-y-2">
+              <label className="vf-label" htmlFor="device-code">
+                Device Code (receipt prefix)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="device-code"
+                  type="text"
+                  value={deviceCode}
+                  maxLength={4}
+                  onChange={(e) => setDeviceCode(e.target.value.toUpperCase())}
+                  className="vf-input vf-num w-28 uppercase"
+                  aria-describedby="device-code-hint"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={savingDeviceCode || deviceCode.trim().toUpperCase() === device.code}
+                  className="vf-btn-ghost"
+                >
+                  {savingDeviceCode ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              <p id="device-code-hint" className="vf-sub">
+                2–4 letters or digits. Used in future receipt numbers.
+              </p>
+            </form>
           </div>
         </section>
       )}
 
-      {/* Cloud & Sync Section (Phase 8B) */}
-      <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-gray-800">Cloud Connection & Sync (Supabase)</h2>
-        <p className="text-sm text-gray-600">
+      <section className="vf-card space-y-4 p-5">
+        <h2 className="vf-title">Cloud Connection & Sync (Supabase)</h2>
+        <p className="vf-sub">
           Connect your local shop to Supabase to synchronize sales, inventory, and catalog across devices.
         </p>
 
         {shop && (
-          <div className="p-3 bg-gray-50 border rounded text-sm flex items-center justify-between gap-3 max-w-lg">
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm flex items-center justify-between gap-3 max-w-lg">
             <div className="min-w-0">
-              <span className="text-gray-500 block text-xs uppercase font-medium">
+              <span className="block text-xs font-medium uppercase text-slate-500">
                 Shop ID — share with second devices
               </span>
               <span className="font-mono text-xs break-all">{shop.id}</span>
@@ -351,7 +468,7 @@ export function SettingsScreen() {
             <button
               type="button"
               onClick={() => void handleCopyShopId()}
-              className="shrink-0 rounded border border-gray-300 bg-white px-3 py-2 text-xs font-medium min-h-11 hover:bg-gray-100"
+              className="vf-btn-ghost min-h-10 shrink-0 px-3 text-xs"
             >
               {copiedShopId ? 'Copied!' : 'Copy'}
             </button>
@@ -359,32 +476,32 @@ export function SettingsScreen() {
         )}
 
         {cloudError && (
-          <div role="alert" className="p-3 bg-red-50 text-red-700 rounded text-sm border border-red-200">
+          <div role="alert" className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm border border-rose-200">
             {cloudError}
           </div>
         )}
         {cloudMessage && (
-          <div role="status" className="p-3 bg-green-50 text-green-700 rounded text-sm border border-green-200">
+          <div role="status" className="p-3 bg-emerald-50 text-emerald-700 rounded-xl text-sm border border-emerald-200">
             {cloudMessage}
           </div>
         )}
 
         <div className="space-y-4 max-w-lg">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Supabase Project URL</label>
+            <label className="vf-label">Supabase Project URL</label>
             <input
               type="text"
-              className="w-full rounded border border-gray-300 p-3 min-h-11 font-mono text-sm"
+              className="vf-input font-mono text-sm"
               value={supabaseUrl}
               onChange={(e) => setSupabaseUrl(e.target.value)}
               placeholder="https://xxx.supabase.co"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Supabase Anon Key</label>
+            <label className="vf-label">Supabase Anon Key</label>
             <input
               type="password"
-              className="w-full rounded border border-gray-300 p-3 min-h-11 font-mono text-sm"
+              className="vf-input font-mono text-sm"
               value={supabaseAnonKey}
               onChange={(e) => setSupabaseAnonKey(e.target.value)}
               placeholder="eyJ..."
@@ -401,7 +518,7 @@ export function SettingsScreen() {
                   'Supabase configuration saved.',
                 )
               }
-              className="rounded bg-emerald-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-emerald-800 disabled:opacity-50"
+              className="vf-btn-primary min-h-10 px-3.5 text-sm"
             >
               Save Configuration
             </button>
@@ -410,22 +527,22 @@ export function SettingsScreen() {
 
           {!sync.email ? (
             <div className="space-y-3 pt-2 border-t">
-              <h3 className="font-medium text-gray-800">Cloud Authentication</h3>
+              <h3 className="font-semibold text-slate-800">Cloud Authentication</h3>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="vf-label">Email</label>
                 <input
                   type="email"
-                  className="w-full rounded border border-gray-300 p-3 min-h-11"
+                  className="vf-input"
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
                   placeholder="owner@shop.com"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <label className="vf-label">Password</label>
                 <input
                   type="password"
-                  className="w-full rounded border border-gray-300 p-3 min-h-11"
+                  className="vf-input"
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                   placeholder="••••••••"
@@ -445,7 +562,7 @@ export function SettingsScreen() {
                       );
                     })
                   }
-                  className="rounded bg-gray-800 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-gray-900 disabled:opacity-50"
+                  className="vf-btn-dark"
                 >
                   Sign Up
                 </button>
@@ -458,7 +575,7 @@ export function SettingsScreen() {
                       'Signed in successfully.',
                     )
                   }
-                  className="rounded bg-emerald-700 text-white px-4 py-2.5 min-h-11 text-sm font-medium hover:bg-emerald-800 disabled:opacity-50"
+                  className="vf-btn-primary min-h-10 px-3.5 text-sm"
                 >
                   Sign In
                 </button>
@@ -472,14 +589,14 @@ export function SettingsScreen() {
           ) : (
             <div className="space-y-3 pt-2 border-t">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">
-                  Signed in as <strong className="text-gray-900">{sync.email}</strong>
+                <span className="text-sm text-slate-700">
+                  Signed in as <strong className="text-slate-900">{sync.email}</strong>
                 </span>
                 <button
                   type="button"
                   disabled={sync.busy}
                   onClick={() => void runCloudAction(() => sync.signOut(), 'Signed out.')}
-                  className="text-sm text-red-600 underline font-medium disabled:opacity-50"
+                  className="text-sm font-medium text-rose-600 underline disabled:opacity-50"
                 >
                   Sign Out
                 </button>
@@ -496,7 +613,7 @@ export function SettingsScreen() {
                         'Shop claimed on Supabase — cloud sync is now running automatically.',
                       )
                     }
-                    className="w-full rounded bg-green-700 hover:bg-green-800 text-white px-5 py-3 font-medium min-h-11 shadow disabled:opacity-50"
+                    className="vf-btn-primary w-full"
                   >
                     {sync.busy ? 'Working...' : 'Connect Cloud & Claim Shop'}
                   </button>
@@ -506,23 +623,23 @@ export function SettingsScreen() {
               {sync.enrolledShopId && (
                 <>
                   <div className="flex items-center justify-between text-sm pt-2">
-                    <span className="text-gray-700">
+                    <span className="text-slate-700">
                       Connected to shop <span className="font-mono text-xs">{sync.enrolledShopId.slice(0, 8)}…</span>
                     </span>
                     <span className={`font-bold px-2 py-0.5 rounded text-xs uppercase ${
-                      sync.status.status === 'synced' ? 'bg-green-100 text-green-800' :
+                      sync.status.status === 'synced' ? 'bg-emerald-100 text-emerald-800' :
                       sync.status.status === 'pending' ? 'bg-amber-100 text-amber-800' :
-                      sync.status.status === 'error' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                      sync.status.status === 'error' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-800'
                     }`}>
                       {sync.status.status} {sync.status.pendingCount > 0 ? `(${sync.status.pendingCount} pending)` : ''}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-sm text-gray-600">
+                  <div className="flex items-center justify-between text-sm text-slate-600">
                     <span>Last Success:</span>
                     <span className="font-mono">{sync.status.lastSuccessAt ? new Date(sync.status.lastSuccessAt).toLocaleString() : 'Never'}</span>
                   </div>
                   {sync.status.lastError && (
-                    <div className="p-2 bg-red-50 text-red-700 text-xs rounded border border-red-200">
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
                       Error: {sync.status.lastError}
                     </div>
                   )}
@@ -533,7 +650,7 @@ export function SettingsScreen() {
                       onClick={() =>
                         void runCloudAction(() => sync.syncNow(), 'Sync completed successfully.')
                       }
-                      className="rounded bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-sm font-medium min-h-11 disabled:opacity-50"
+                      className="vf-btn-primary min-h-10 px-3.5 text-sm"
                     >
                       {sync.status.isSyncing ? 'Syncing...' : 'Sync Now'}
                     </button>
@@ -541,9 +658,9 @@ export function SettingsScreen() {
 
                   {sync.status.problems.length > 0 && (
                     <div className="pt-2 space-y-1">
-                      <h4 className="text-xs font-bold text-red-700 uppercase">Actionable Sync Problems</h4>
+                      <h4 className="text-xs font-bold uppercase text-rose-700">Actionable Sync Problems</h4>
                       {sync.status.problems.map((p, idx) => (
-                        <div key={idx} className="p-2 bg-red-50 text-red-800 text-xs rounded border border-red-200 flex justify-between items-center">
+                        <div key={idx} className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800">
                           <div>
                             <strong>{p.table}</strong> ({p.id.slice(0, 8)}...): {p.error}
                           </div>
@@ -554,12 +671,12 @@ export function SettingsScreen() {
 
                   {devices.length > 0 && (
                     <div className="pt-2 space-y-1">
-                      <h4 className="text-xs font-bold text-gray-700 uppercase">Registered Devices</h4>
+                      <h4 className="text-xs font-bold uppercase text-slate-700">Registered Devices</h4>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         {devices.map((d) => (
-                          <div key={d.id} className="p-2 bg-gray-50 border rounded flex items-center gap-2">
+                          <div key={d.id} className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-2">
                             <span className="font-mono font-bold">{d.code}</span>
-                            <span className="text-gray-600 truncate">{d.name}</span>
+                            <span className="truncate text-slate-600">{d.name}</span>
                           </div>
                         ))}
                       </div>
@@ -572,17 +689,17 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-gray-800">Security & PIN Lock</h2>
+      <section className="vf-card space-y-4 p-5">
+        <h2 className="vf-title">Security & PIN Lock</h2>
         {pinMessage && <p className="text-sm font-medium text-emerald-700">{pinMessage}</p>}
         <form onSubmit={handleSavePin} className="space-y-4 max-w-md">
           {settings['pin_hash'] && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Current PIN</label>
+              <label className="vf-label">Current PIN</label>
               <input
                 type="password"
                 maxLength={6}
-                className="w-full rounded border border-gray-300 p-3 min-h-11"
+                className="vf-input"
                 value={currentPin}
                 onChange={(e) => setCurrentPin(e.target.value)}
                 placeholder="Enter current PIN"
@@ -590,13 +707,13 @@ export function SettingsScreen() {
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="vf-label">
               {settings['pin_hash'] ? 'New PIN (leave blank to remove)' : 'Set PIN (4 to 6 digits)'}
             </label>
             <input
               type="password"
               maxLength={6}
-              className="w-full rounded border border-gray-300 p-3 min-h-11"
+              className="vf-input"
               value={newPin}
               onChange={(e) => setNewPin(e.target.value)}
               placeholder="••••"
@@ -604,9 +721,9 @@ export function SettingsScreen() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Idle Auto-Lock</label>
+            <label className="vf-label">Idle Auto-Lock</label>
             <select
-              className="w-full rounded border border-gray-300 p-3 min-h-11 bg-white"
+              className="vf-select"
               value={settings['idle_lock_minutes'] || '0'}
               onChange={(e) => void handleIdleTimeoutChange(e.target.value)}
             >
@@ -619,25 +736,25 @@ export function SettingsScreen() {
 
           <button
             type="submit"
-            className="rounded bg-emerald-700 text-white px-5 py-3 min-h-11 font-medium hover:bg-emerald-800"
+            className="vf-btn-primary"
           >
             Update PIN Settings
           </button>
         </form>
       </section>
 
-      <section className="bg-white rounded-xl shadow-sm border p-6 space-y-3">
-        <h2 className="text-xl font-semibold text-gray-800">Application Information</h2>
-        <div className="text-sm space-y-1 text-gray-600">
+      <section className="vf-card space-y-3 p-5">
+        <h2 className="vf-title">Application Information</h2>
+        <div className="space-y-1 text-sm text-slate-600">
           <p>App Name: VaporFlow POS</p>
-          <p>Version: 0.8.0 (development build)</p>
-          <p>Platform: Desktop / Android</p>
+          <p>Version: {APP_VERSION}</p>
+          <p>{platform.platform === 'desktop' ? 'Platform: Windows desktop' : 'Platform: Android'}</p>
         </div>
       </section>
 
-      <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
+      <section className="vf-card space-y-4 p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-800">Error Log (Last 100)</h2>
+          <h2 className="vf-title">Error Log (Last 100)</h2>
           <div className="flex gap-2">
             <button
               onClick={() => {
@@ -648,7 +765,7 @@ export function SettingsScreen() {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
               }}
-              className="rounded border px-4 py-2 text-sm font-medium hover:bg-gray-50 min-h-11"
+              className="vf-btn-ghost"
             >
               {copied ? 'Copied to clipboard!' : 'Copy logs'}
             </button>
@@ -657,21 +774,21 @@ export function SettingsScreen() {
                 globalErrorLogger.clear();
                 setLogs([]);
               }}
-              className="rounded border px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 min-h-11"
+              className="vf-btn-danger"
             >
               Clear
             </button>
           </div>
         </div>
-        <div className="bg-gray-900 text-green-400 font-mono text-xs p-4 rounded h-48 overflow-y-auto">
+        <div className="h-48 overflow-y-auto rounded-xl bg-slate-900 p-4 font-mono text-xs text-emerald-400">
           {logs.length === 0 ? (
-            <span className="text-gray-500">No errors logged.</span>
+            <span className="text-slate-500">No errors logged.</span>
           ) : (
             logs.map((log, i) => (
               <div key={i} className="mb-2">
-                <span className="text-gray-400">[{log.timestamp}]</span> {log.message}
+                <span className="text-slate-400">[{log.timestamp}]</span> {log.message}
                 {log.stack && (
-                  <div className="text-gray-500 text-[10px] whitespace-pre-wrap">{log.stack}</div>
+                  <div className="whitespace-pre-wrap text-[10px] text-slate-500">{log.stack}</div>
                 )}
               </div>
             ))
@@ -679,19 +796,19 @@ export function SettingsScreen() {
         </div>
       </section>
 
-      <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-gray-800">Backup & Restore</h2>
-        <p className="text-sm text-gray-600">
+      <section className="vf-card space-y-4 p-5">
+        <h2 className="vf-title">Backup & Restore</h2>
+        <p className="vf-sub">
           Export a versioned .vfbackup JSON file containing all synced shop data, or restore from a previous backup. Restoring replaces local synced data.
         </p>
 
         {backupError && (
-          <div role="alert" className="p-3 bg-red-50 text-red-700 rounded text-sm border border-red-200">
+          <div role="alert" className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm border border-rose-200">
             {backupError}
           </div>
         )}
         {backupSuccess && (
-          <div role="status" className="p-3 bg-green-50 text-green-700 rounded text-sm border border-green-200">
+          <div role="status" className="p-3 bg-emerald-50 text-emerald-700 rounded-xl text-sm border border-emerald-200">
             {backupSuccess}
           </div>
         )}
@@ -715,13 +832,13 @@ export function SettingsScreen() {
                 setBackupError('Failed to export backup');
               }
             }}
-            className="rounded bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 font-medium min-h-11 shadow"
+            className="vf-btn-primary"
           >
             Export Backup (.vfbackup)
           </button>
 
           <div>
-            <label className="rounded border bg-white hover:bg-gray-50 text-gray-700 px-5 py-2.5 font-medium min-h-11 inline-flex items-center cursor-pointer shadow-sm">
+            <label className="vf-btn-ghost cursor-pointer">
               <span>Restore Backup...</span>
               <input
                 type="file"
@@ -752,18 +869,106 @@ export function SettingsScreen() {
         </div>
       </section>
 
+      <section className="vf-card space-y-4 border-rose-200 p-5">
+        <h2 className="text-xl font-semibold text-rose-700">Danger Zone</h2>
+        <p className="vf-sub">
+          Clear Data erases everything stored on this device — shop profile, catalog, stock, sales,
+          returns, expenses, PIN, receipt counter and cloud configuration — and returns the app to
+          the setup wizard. Data already synced to the cloud and other devices is not affected.
+        </p>
+        {sync.email && (
+          <div className="p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200">
+            Sign out of the Cloud Connection above before clearing data on this device.
+          </div>
+        )}
+        <button
+          type="button"
+          disabled={Boolean(sync.email)}
+          onClick={() => {
+            setResetError('');
+            setResetConfirm('');
+            setResetModalOpen(true);
+          }}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-3 font-semibold text-white shadow transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Clear Data
+        </button>
+      </section>
+
+      {/* Clear Data Confirmation Modal */}
+      {resetModalOpen && (
+        <div className="vf-modal">
+          <div className="vf-modal-card max-w-lg space-y-4 p-6">
+            <h3 className="text-xl font-bold text-slate-900">Clear all data?</h3>
+            <p className="vf-sub">
+              This permanently deletes every shop, product, stock movement, sale, return and
+              expense on this device, along with the PIN and settings. The app will restart at the
+              setup wizard. This cannot be undone.
+            </p>
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              Export a backup first if you may need this data later.
+            </div>
+            <div>
+              <label htmlFor="clear-data-confirm" className="vf-label">
+                Type DELETE to confirm
+              </label>
+              <input
+                id="clear-data-confirm"
+                type="text"
+                autoComplete="off"
+                value={resetConfirm}
+                disabled={resetting}
+                onChange={(e) => {
+                  setResetConfirm(e.target.value);
+                  setResetError('');
+                }}
+                className="vf-input"
+                placeholder="DELETE"
+              />
+            </div>
+            {resetError && (
+              <div role="alert" className="p-3 bg-rose-50 text-rose-700 rounded-xl text-sm border border-rose-200">
+                {resetError}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-3 border-t">
+              <button
+                type="button"
+                disabled={resetting}
+                onClick={() => {
+                  setResetModalOpen(false);
+                  setResetConfirm('');
+                  setResetError('');
+                }}
+                className="vf-btn-ghost"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={resetting || resetConfirm.trim().toUpperCase() !== 'DELETE'}
+                onClick={() => void handleClearData()}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 font-semibold text-white shadow transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resetting ? 'Clearing...' : 'Clear Data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Restore Confirmation Modal */}
       {restoreModalOpen && pendingBackupData && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
-            <h3 className="text-xl font-bold text-gray-900">Confirm Backup Restore</h3>
-            <p className="text-sm text-gray-600">
+        <div className="vf-modal">
+          <div className="vf-modal-card max-w-lg space-y-4 p-6">
+            <h3 className="text-xl font-bold text-slate-900">Confirm Backup Restore</h3>
+            <p className="vf-sub">
               You are about to restore backup from <span className="font-mono">{new Date(pendingBackupData.exported_at).toLocaleString()}</span> (App version: {pendingBackupData.app_version}).
             </p>
             <div className="p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200">
               ⚠️ Warning: Restoring this backup will replace all current local synced data (products, sales, stock, expenses) with the backup contents. Local device identity and PIN are preserved.
             </div>
-            <div className="text-xs text-gray-500 space-y-1">
+            <div className="space-y-1 text-xs text-slate-500">
               <p>Products in backup: {pendingBackupData.tables.products.length}</p>
               <p>Sales in backup: {pendingBackupData.tables.sales.length}</p>
               <p>Expenses in backup: {pendingBackupData.tables.expenses.length}</p>
@@ -774,7 +979,7 @@ export function SettingsScreen() {
                   setRestoreModalOpen(false);
                   setPendingBackupData(null);
                 }}
-                className="px-4 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                className="vf-btn-ghost"
               >
                 Cancel
               </button>
@@ -785,7 +990,7 @@ export function SettingsScreen() {
                   restoringRef.current = true;
                   setRestoring(true);
                   try {
-                    await restoreBackup(db, pendingBackupData);
+                    await sync.restore(pendingBackupData);
                     setRestoreModalOpen(false);
                     setPendingBackupData(null);
                     setBackupSuccess('Backup restored successfully. Reloading...');
@@ -801,7 +1006,7 @@ export function SettingsScreen() {
                     setRestoring(false);
                   }
                 }}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 font-semibold text-white shadow transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {restoring ? 'Restoring...' : 'Confirm Restore'}
               </button>
@@ -809,11 +1014,6 @@ export function SettingsScreen() {
           </div>
         </div>
       )}
-
-      <section className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-        <h2 className="text-xl font-semibold text-gray-800">Development Diagnostics</h2>
-        <DbCheck />
-      </section>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useDb, usePlatform } from '../context/DbProvider';
 import { StockRepo, ShopRepo, DeviceRepo } from '@vaporflow/core';
 import { ProductsScreen } from '../screens/ProductsScreen';
 import { StockScreen } from '../screens/StockScreen';
-import { SaleScreen } from '../screens/SaleScreen';
+import { SaleScreen, useSaleDraft } from '../screens/SaleScreen';
 import { SalesScreen } from '../screens/SalesScreen';
 import { ReportsScreen } from '../screens/ReportsScreen';
 import { ExpensesScreen } from '../screens/ExpensesScreen';
@@ -30,6 +30,7 @@ export function Shell() {
   const [deviceCode, setDeviceCode] = useState('');
   const [currency, setCurrency] = useState('');
   const security = useSecurity();
+  const draft = useSaleDraft();
 
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -183,15 +184,16 @@ export function Shell() {
             <Icon name="zap" />
           </span>
           <div className="min-w-0 flex-1">
-            <strong className="hidden md:block">{activeItem?.label}</strong>
-            <strong className="block md:hidden truncate">{shopName}</strong>
-            <small className="hidden md:block">{shopName}</small>
-            <small className="md:hidden">
-              {deviceCode} · {platform === 'android' ? 'Android POS' : 'Mobile POS'}
+            <h1>{activeItem?.label ?? 'Sale'}</h1>
+            <small className="block">
+              {shopName} · {platform === 'android' ? 'Android POS' : 'Offline-first SQLite'}
             </small>
           </div>
           {lowStockCount > 0 && (
-            <Link className="hidden lg:inline-flex text-xs text-amber-800" to="/stock">
+            <Link
+              className="hidden lg:inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
+              to="/stock"
+            >
               {lowStockCount} low stock
             </Link>
           )}
@@ -204,7 +206,7 @@ export function Shell() {
         </header>
         <main className="pos-main" key={location.pathname}>
           <Routes>
-            <Route path="/" element={<SaleScreen />} />
+            <Route path="/" element={<SaleScreen draft={draft} />} />
             <Route path="/products" element={<ProductsScreen />} />
             <Route path="/stock" element={<StockScreen />} />
             <Route path="/sales" element={<SalesScreen />} />

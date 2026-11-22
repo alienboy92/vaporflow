@@ -3,6 +3,7 @@ import { useDb } from '../context/DbProvider';
 import { ShopRepo, ExpenseRepo, DeviceRepo, uuidv7, formatMoney, localDate } from '@vaporflow/core';
 import type { Shop, Expense } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
+import { useToast } from '../components/Toast';
 
 const CATEGORIES = [
   'Rent',
@@ -16,17 +17,18 @@ const CATEGORIES = [
 
 export function ExpensesScreen() {
   const db = useDb();
+  const toast = useToast();
   const [shop, setShop] = useState<Shop | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Modal form state for add/edit
+  // Form state for add/edit
   const formRef = useRef<HTMLFormElement>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [expenseDate, setExpenseDate] = useState(localDate(new Date()));
   const [amountInput, setAmountInput] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]!);
+  const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export function ExpensesScreen() {
     setEditingExpenseId(null);
     setExpenseDate(localDate(new Date()));
     setAmountInput('');
-    setCategory(CATEGORIES[0]!);
+    setCategory('');
     setNote('');
   }
 
@@ -84,6 +86,10 @@ export function ExpensesScreen() {
     const amount = parseInt(amountInput || '0', 10);
     if (!Number.isInteger(amount) || amount <= 0) {
       setError('Expense amount must be a positive integer');
+      return;
+    }
+    if (!category.trim()) {
+      setError('Expense category is required');
       return;
     }
     if (!expenseDate) {
@@ -109,7 +115,7 @@ export function ExpensesScreen() {
         shop_id: shop.id,
         expense_date: expenseDate,
         amount,
-        category,
+        category: category.trim(),
         note: note.trim() ? note.trim() : null,
         created_at: nowIso,
         updated_at: nowIso,
@@ -120,6 +126,7 @@ export function ExpensesScreen() {
       };
 
       await expenseRepo.save(expense);
+      toast.show(editingExpenseId ? 'Expense updated' : 'Expense added');
       resetForm();
       await loadExpenses();
     } catch (err: unknown) {
@@ -138,176 +145,195 @@ export function ExpensesScreen() {
       const nowIso = new Date().toISOString();
       await expenseRepo.softDelete(id, nowIso);
       if (editingExpenseId === id) resetForm();
+      toast.show('Expense deleted');
       await loadExpenses();
     } catch (err) {
       globalErrorLogger.log(err);
-      window.alert('Failed to delete expense.');
+      setError('Failed to delete expense.');
     }
   }
 
   if (loading) {
-    return <div className="p-6 text-gray-600">Loading expenses...</div>;
+    return <div className="vf-page text-sm text-slate-500">Loading expenses…</div>;
   }
 
   const currency = shop?.currency_code ?? 'PKR';
+  const decimals = shop?.currency_decimals ?? 0;
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const categorySuggestions = Array.from(
+    new Set([...CATEGORIES, ...expenses.map((exp) => exp.category)]),
+  ).sort((a, b) => a.localeCompare(b));
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+    <div className="vf-page">
       {error && (
         <div
           role="alert"
-          className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
         >
           {error}
         </div>
       )}
 
-      <section className="bg-white p-4 rounded-2xl border shadow-sm">
-        <h2 className="font-bold mb-3">
-          {editingExpenseId ? 'Edit Expense' : 'Record New Expense'}
-        </h2>
-        <form ref={formRef} onSubmit={handleSaveExpense} className="expense-form">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
-            <input
-              type="date"
-              value={expenseDate}
-              onChange={(e) => setExpenseDate(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              required
-            />
-          </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        {/* Add / edit expense form */}
+        <section className="vf-card-pad h-fit lg:col-span-4">
+          <h2 className="mb-3 text-base font-bold text-slate-900">
+            {editingExpenseId ? 'Edit Expense' : 'Record New Expense'}
+          </h2>
+          <form ref={formRef} onSubmit={handleSaveExpense} className="space-y-3.5">
+            <div>
+              <label className="vf-label" htmlFor="expense-date">
+                Date
+              </label>
+              <input
+                id="expense-date"
+                type="date"
+                value={expenseDate}
+                onChange={(e) => setExpenseDate(e.target.value)}
+                className="vf-input"
+                required
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
-            >
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div>
+              <label className="vf-label" htmlFor="expense-category">
+                Category
+              </label>
+              <input
+                id="expense-category"
+                type="text"
+                list="expense-category-options"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="e.g. Rent, Electricity, Tea, Packaging"
+                className="vf-input"
+                required
+              />
+              <datalist id="expense-category-options">
+                {categorySuggestions.map((cat) => (
+                  <option key={cat} value={cat} />
+                ))}
+              </datalist>
+            </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Amount ({currency})
-            </label>
-            <input
-              type="number"
-              min="1"
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-              placeholder="e.g. 5000"
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              required
-            />
-          </div>
+            <div>
+              <label className="vf-label" htmlFor="expense-amount">
+                Amount ({currency})
+              </label>
+              <input
+                id="expense-amount"
+                type="number"
+                min="1"
+                step="1"
+                value={amountInput}
+                onChange={(e) => setAmountInput(e.target.value)}
+                placeholder="Enter amount"
+                className="vf-input vf-num"
+                required
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Note / Reference</label>
-            <input
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Optional details or vendor name..."
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
+            <div>
+              <label className="vf-label" htmlFor="expense-note">
+                Note (optional)
+              </label>
+              <input
+                id="expense-note"
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Details or vendor name…"
+                className="vf-input"
+              />
+            </div>
 
-          <div className="col-span-full flex justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={resetForm}
-              className="px-4 py-2.5 border rounded-xl hover:bg-gray-100 font-medium text-sm text-gray-700 min-h-11"
-            >
-              Reset
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-300 text-white font-bold py-2.5 px-6 rounded-xl text-sm shadow transition-colors min-h-11"
-            >
-              {submitting ? 'Saving...' : 'Save Expense'}
-            </button>
-          </div>
-        </form>
-      </section>
-      {/* Summary Card */}
-      <div className="bg-white p-6 rounded-xl border shadow-sm flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium text-gray-500">Total Recorded Expenses</h3>
-          <p className="text-2xl font-bold text-gray-900 mt-1">
-            {formatMoney(totalExpenses, 0, currency)}
-          </p>
-        </div>
-        <div className="bg-emerald-50 text-emerald-700 font-semibold px-4 py-2 rounded-lg text-sm">
-          {expenses.length} record(s)
-        </div>
-      </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="vf-btn-ghost flex-1"
+                disabled={submitting}
+              >
+                Reset
+              </button>
+              <button type="submit" disabled={submitting} className="vf-btn-primary flex-[2]">
+                {submitting ? 'Saving…' : editingExpenseId ? 'Update Expense' : '+ Add Expense'}
+              </button>
+            </div>
+          </form>
+        </section>
 
-      {/* Expenses Table */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="record-list w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                <th className="p-4">Date</th>
-                <th className="p-4">Category</th>
-                <th className="p-4">Note / Description</th>
-                <th className="p-4 text-right">Amount</th>
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 text-sm">
-              {expenses.length === 0 ? (
+        {/* Expenses list */}
+        <section className="vf-card overflow-hidden lg:col-span-8">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-3.5">
+            <div>
+              <h2 className="font-bold text-slate-900">Recorded Shop Expenses</h2>
+              <p className="vf-sub">{expenses.length} record(s)</p>
+            </div>
+            <span className="vf-num text-sm font-bold text-rose-600">
+              Total: {formatMoney(totalExpenses, decimals, currency)}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="record-list vf-table">
+              <thead>
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-400">
-                    No expenses recorded yet.
-                  </td>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Note</th>
+                  <th className="text-right">Amount</th>
+                  <th className="text-right">Actions</th>
                 </tr>
-              ) : (
-                expenses.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
-                    <td data-label="Date" className="p-4 font-medium text-gray-900">
-                      {exp.expense_date}
-                    </td>
-                    <td data-label="Category" className="p-4">
-                      <span className="bg-gray-100 text-gray-800 text-xs px-2.5 py-1 rounded-full font-medium">
-                        {exp.category}
-                      </span>
-                    </td>
-                    <td data-label="Note / Description" className="p-4 text-gray-600">
-                      {exp.note || '—'}
-                    </td>
-                    <td data-label="Amount" className="p-4 text-right font-bold text-red-600">
-                      -{formatMoney(exp.amount, 0, currency)}
-                    </td>
-                    <td data-label="Actions" className="p-4 text-right space-x-2">
-                      <button
-                        onClick={() => openEditModal(exp)}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg text-xs font-medium min-h-11 inline-flex items-center"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => void handleDeleteExpense(exp.id)}
-                        className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-medium min-h-11 inline-flex items-center"
-                      >
-                        Delete
-                      </button>
+              </thead>
+              <tbody>
+                {expenses.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-400">
+                      No expenses recorded yet.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  expenses.map((exp) => (
+                    <tr key={exp.id}>
+                      <td data-label="Date" className="vf-num text-xs text-slate-600">
+                        {exp.expense_date}
+                      </td>
+                      <td data-label="Category">
+                        <span className="vf-badge-slate">{exp.category}</span>
+                      </td>
+                      <td data-label="Note" className="text-slate-600">
+                        {exp.note || '—'}
+                      </td>
+                      <td
+                        data-label="Amount"
+                        className="vf-num text-right font-bold text-rose-600"
+                      >
+                        -{formatMoney(exp.amount, decimals, currency)}
+                      </td>
+                      <td data-label="Actions" className="space-x-2 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(exp)}
+                          className="vf-btn-ghost min-h-10 px-3 text-xs"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteExpense(exp.id)}
+                          className="vf-btn-danger min-h-10 px-3 text-xs"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
   );

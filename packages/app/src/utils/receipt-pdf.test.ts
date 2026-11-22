@@ -92,8 +92,8 @@ function decode(bytes: Uint8Array): string {
 }
 
 describe('receipt PDF builder', () => {
-  it('produces a structurally valid PDF with correct xref offsets', () => {
-    const bytes = buildReceiptPdf(sale, items, shop);
+  it('produces a structurally valid PDF with correct xref offsets', async () => {
+    const bytes = await buildReceiptPdf(sale, items, shop);
     const pdf = decode(bytes);
 
     expect(pdf.startsWith('%PDF-1.4\n')).toBe(true);
@@ -116,8 +116,8 @@ describe('receipt PDF builder', () => {
     expect(pdf).toContain('/Root 1 0 R');
   });
 
-  it('uses an 80mm page width and lays out receipt content', () => {
-    const pdf = decode(buildReceiptPdf(sale, items, shop));
+  it('uses an 80mm page width and lays out receipt content', async () => {
+    const pdf = decode(await buildReceiptPdf(sale, items, shop));
     expect(pdf).toContain(`/MediaBox [0 0 ${RECEIPT_PDF_WIDTH_PT.toFixed(2)}`);
     // Shop name, receipt number, totals and change due are present in the stream.
     expect(pdf).toContain('(Vapor Shop) Tj');
@@ -128,13 +128,13 @@ describe('receipt PDF builder', () => {
     expect(pdf).toContain('(Thank you) Tj');
   });
 
-  it('escapes parentheses and strips non-latin1 characters', () => {
+  it('escapes parentheses and strips non-latin1 characters', async () => {
     const weirdShop: Shop = { ...shop, name: 'Café (Main)' };
     const lines = buildReceiptPdfLines(sale, items, weirdShop);
     const nameLine = lines.find((l) => l.text.includes('Main'))!;
     expect(nameLine.text).toBe('Café (Main)');
 
-    const bytes = buildReceiptPdf(sale, items, weirdShop);
+    const bytes = await buildReceiptPdf(sale, items, weirdShop);
     const pdf = decode(bytes);
     expect(pdf).toContain('(Café \\(Main\\)) Tj');
   });

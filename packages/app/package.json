@@ -9,8 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "build:diagnostics": "vite build --mode diagnostics"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",

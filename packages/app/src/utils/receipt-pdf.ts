@@ -1,8 +1,5 @@
-/**
- * Minimal PDF generator for 80mm receipts (PDF 1.4, Courier/Courier-Bold).
- * Pure string/byte construction with correct xref offsets — no dependencies.
- * The shop logo is not embedded (text-only PDF); the HTML receipt carries it.
- */
+/** Printable 80 mm PDF with native text and browser-rendered Unicode and logo images. */
+import { formatDateTime } from './receipt-html';
 import { formatMoney } from '@vaporflow/core';
 import type { Sale, SaleItem, Shop } from '@vaporflow/core';
 
@@ -56,23 +53,19 @@ export function buildReceiptPdfLines(sale: Sale, items: SaleItem[], shop: Shop):
     lines.push({ text, align, bold, size });
   };
 
-  if (shop.show_logo_on_receipt && shop.logo_base64) {
-    push('[logo]', 'center', false, 8);
-  }
   push(shop.name, 'center', true, 11);
   if (shop.address) push(shop.address, 'center', false, 8);
   if (shop.phone) push(shop.phone, 'center', false, 8);
   push('');
   push(`Receipt: ${sale.receipt_no}`);
-  push(`Date: ${new Date(sale.sold_at).toISOString().replace('T', ' ').slice(0, 16)}`);
+  push(`Date: ${formatDateTime(sale.sold_at)}`);
   push('');
   push('Item                  Total', 'left', true, 7);
   for (const item of items) {
     const name = item.variant_name
       ? `${item.product_name} - ${item.variant_name}`
       : item.product_name;
-    const truncated = name.length > 34 ? name.slice(0, 33) + '…' : name;
-    push(truncated, 'left', false, 7);
+    for (const part of name.match(/.{1,40}/gu) ?? ['']) push(part, 'left', false, 7);
     push(`${item.qty} x ${money(shop, item.unit_price)}`, 'left', false, 7);
     push(money(shop, item.net_total), 'right', false, 8);
     push('');
@@ -102,18 +95,59 @@ export function buildReceiptPdfLines(sale: Sale, items: SaleItem[], shop: Shop):
  * Builds a complete, valid PDF 1.4 document for the receipt as bytes.
  * Layout is fixed-width Courier so amounts right-align exactly.
  */
-export function buildReceiptPdf(sale: Sale, items: SaleItem[], shop: Shop): Uint8Array {
-  return buildTextReceiptPdf(buildReceiptPdfLines(sale, items, shop));
+export async function buildReceiptPdf(sale: Sale, items: SaleItem[], shop: Shop): Promise<Uint8Array> {
+  let logo: HTMLImageElement | undefined;
+  if (shop.show_logo_on_receipt && shop.logo_base64) {
+    if (!/^data:image\/(?:png|jpeg|webp);base64,/i.test(shop.logo_base64)) throw new Error('Invalid receipt logo');
+    logo = new Image();
+    logo.src = shop.logo_base64;
+    await logo.decode();
+  }
+  return buildTextReceiptPdf(buildReceiptPdfLines(sale, items, shop), logo);
 }
 
-export function buildTextReceiptPdf(contentLines: PdfLine[]): Uint8Array {
-  const widthPt = RECEIPT_PDF_WIDTH_PT;
-  const heightPt = Math.round((contentLines.length * LINE_HEIGHT + MARGIN * 2) * 100) / 100;
+function imageOp(width: number, height: number, x: number, y: number, draw: (ctx: CanvasRenderingContext2D) => void): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(width * 3);
+  canvas.height = Math.ceil(height * 3);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Receipt image rendering unavailable');
+  ctx.scale(3, 3);
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  draw(ctx);
+  const jpeg = atob(canvas.toDataURL('image/jpeg', 0.96).split(',')[1]!);
+  const hex = Array.from(jpeg, c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+  return `q ${width} 0 0 ${height} ${x} ${y} cm BI /W ${canvas.width} /H ${canvas.height} /CS /RGB /BPC 8 /F [/AHx /DCT] ID
+${hex}>
+EI Q`;
+}
 
+export function buildTextReceiptPdf(contentLines: PdfLine[], logo?: HTMLImageElement): Uint8Array {
+  const widthPt = RECEIPT_PDF_WIDTH_PT;
+  const logoHeight = logo ? Math.min(40, 92 * logo.height / logo.width) : 0;
+  const headerHeight = logo ? logoHeight + 4 : 0;
+  const heightPt = contentLines.length * LINE_HEIGHT + MARGIN * 2 + headerHeight;
   const ops: string[] = [];
+  if (logo) {
+    const width = logo.width * logoHeight / logo.height;
+    ops.push(imageOp(width, logoHeight, (widthPt - width) / 2, heightPt - MARGIN - logoHeight,
+      ctx => ctx.drawImage(logo, 0, 0, width, logoHeight)));
+  }
   contentLines.forEach((line, index) => {
-    const y = heightPt - MARGIN - line.size - index * LINE_HEIGHT;
+    const y = heightPt - headerHeight - MARGIN - line.size - index * LINE_HEIGHT;
     if (!line.text) return;
+    if (/[^\x20-\x7e\xa0-\xff]/u.test(line.text)) {
+      const width = widthPt - 2 * MARGIN;
+      ops.push(imageOp(width, LINE_HEIGHT, MARGIN, y - 2, ctx => {
+        ctx.fillStyle = 'black';
+        ctx.font = `${line.bold ? 'bold ' : ''}${line.size}px sans-serif`;
+        ctx.textAlign = line.align;
+        const left = line.align === 'center' ? width / 2 : line.align === 'right' ? width : 0;
+        ctx.fillText(line.text, left, line.size, width);
+      }));
+      return;
+    }
     const x = xFor(line, widthPt);
     const font = line.bold ? '/F2' : '/F1';
     ops.push(

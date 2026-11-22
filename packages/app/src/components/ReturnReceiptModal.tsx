@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Shop } from '@vaporflow/core';
 import { usePlatform } from '../context/DbProvider';
 import { returnReceiptLines, returnReceiptHtml, returnReceiptPdf, type ReturnReceipt } from '../utils/return-receipt';
-import { printHtml } from '../utils/print';
+import { htmlDocument } from '../utils/print';
 import { RECEIPT_CSS } from '../utils/receipt-html';
 
 export function ReturnReceiptModal({ result, shop, onClose }: { result: ReturnReceipt; shop: Shop; onClose: () => void }) {
@@ -12,20 +12,42 @@ export function ReturnReceiptModal({ result, shop, onClose }: { result: ReturnRe
   async function output(share: boolean) {
     try {
       setError('');
-      if (share) await platform.share.shareFile(`return-${result.ret.id}.pdf`, returnReceiptPdf(lines), 'application/pdf');
-      else printHtml(returnReceiptHtml(lines), RECEIPT_CSS, 'Return receipt');
+      if (share) {
+        await platform.share.shareFile(`return-${result.ret.id}.pdf`, returnReceiptPdf(lines), 'application/pdf');
+      } else {
+        await platform.printer.printReceipt(
+          htmlDocument(returnReceiptHtml(lines), RECEIPT_CSS, 'Return receipt'),
+        );
+      }
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not output return receipt'); }
   }
-  return <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" role="dialog" aria-modal="true" aria-label="Return receipt">
-    <div className="bg-white rounded-xl p-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
-      <h2 className="font-bold text-lg">Return receipt</h2>
-      <div className="my-4 font-mono text-xs break-words">{lines.map((line, index) => <p key={index}>{line || '\u00a0'}</p>)}</div>
-      {error && <p role="alert" className="text-red-700">{error}</p>}
-      <div className="flex gap-2 flex-wrap">
-        <button className="min-h-11 px-4 border rounded" onClick={() => void output(false)}>Print</button>
-        <button className="min-h-11 px-4 border rounded" onClick={() => void output(true)}>Share PDF</button>
-        <button autoFocus className="min-h-11 px-4 border rounded" onClick={onClose}>Close</button>
+  return (
+    <div className="vf-modal" role="dialog" aria-modal="true" aria-label="Return receipt">
+      <div className="vf-modal-card max-w-md p-4">
+        <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-3">
+          <h2 className="vf-title">Return receipt</h2>
+          <button className="icon-button" aria-label="Close return receipt" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <div className="my-4 space-y-0.5 break-words font-mono text-xs text-slate-800">
+          {lines.map((line, index) => (
+            <p key={index}>{line || '\u00a0'}</p>
+          ))}
+        </div>
+        {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+        <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+          <button className="vf-btn-dark flex-1" onClick={() => void output(false)}>
+            Print
+          </button>
+          <button className="vf-btn-primary flex-1" onClick={() => void output(true)}>
+            Share PDF
+          </button>
+          <button autoFocus className="vf-btn-ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
       </div>
     </div>
-  </div>;
+  );
 }

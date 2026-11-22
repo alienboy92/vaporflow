@@ -1,5 +1,5 @@
 /**
- * App-lifetime owner of the cloud sync session (Phase 8B).
+ * App-lifetime owner of the cloud sync session.
  *
  * There is exactly ONE Supabase client and at most ONE SyncEngine for the
  * whole application: per-click clients break autoRefreshToken (access tokens
@@ -22,6 +22,8 @@ import {
   SyncEngine,
   probeShopExists,
   enrollExistingShop,
+  restoreBackup,
+  type VfBackup,
 } from '@vaporflow/core';
 import type { SyncState } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
@@ -57,6 +59,7 @@ interface CloudSyncContextValue {
   /** Second device on an empty device: join an existing cloud shop. */
   joinExistingShop(shopId: string, deviceName: string): Promise<{ deviceCode: string }>;
   syncNow(): Promise<void>;
+  restore(backup: VfBackup): Promise<void>;
   /** Called by the sale screen after a sale; triggers the debounced sync. */
   saleCompleted(): void;
 }
@@ -344,6 +347,17 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     claimAndConnect,
     joinExistingShop,
     syncNow,
+    async restore(backup) {
+      const engine = engineRef.current;
+      stopEngine();
+      await engine?.stopAndDrain();
+      try {
+        await restoreBackup(db, backup);
+      } catch (err) {
+        if (engine) await adoptEngine(engine);
+        throw err;
+      }
+    },
     saleCompleted,
   };
 

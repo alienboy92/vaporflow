@@ -1,10 +1,12 @@
 /**
- * Hidden-iframe printing: renders the given body HTML + CSS in a detached
- * document and invokes the browser print dialog on it, so window.print()
- * prints exactly the receipt/label content instead of the whole app page.
+ * Browser printing. A hidden iframe is given a complete HTML document and its
+ * print dialog is invoked, so only the receipt/label content is printed instead
+ * of the whole app page. Android uses the native Printer plugin instead; this
+ * module remains the desktop and fallback implementation.
  */
 
-function htmlDocument(bodyHtml: string, css: string, title: string): string {
+/** Wraps body HTML + CSS in a complete, self-contained document. */
+export function htmlDocument(bodyHtml: string, css: string, title: string): string {
   const escapedTitle = title
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -13,12 +15,12 @@ function htmlDocument(bodyHtml: string, css: string, title: string): string {
 }
 
 /**
- * Opens the print dialog for the given content. The iframe is removed after
- * printing (afterprint) or after a fallback timeout, whichever comes first.
+ * Opens the browser print dialog for a complete HTML document. The iframe is
+ * removed after printing (afterprint) or after a fallback timeout.
  */
-export function printHtml(bodyHtml: string, css: string, title: string): void {
+export async function printDocument(html: string, title: string): Promise<void> {
   if (typeof document === 'undefined') {
-    throw new Error('Printing requires a browser DOM');
+    throw new Error('Printing requires a browser window');
   }
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
@@ -44,7 +46,7 @@ export function printHtml(bodyHtml: string, css: string, title: string): void {
     const win = iframe.contentWindow;
     if (!win) {
       cleanup();
-      return;
+      throw new Error('Print window unavailable');
     }
     win.addEventListener('afterprint', cleanup);
     // Fallback: some platforms never fire afterprint for the dialog.
@@ -65,16 +67,19 @@ export function printHtml(bodyHtml: string, css: string, title: string): void {
     throw new Error('Could not create a print document');
   }
   doc.open();
-  doc.write(htmlDocument(bodyHtml, css, title));
+  doc.write(html);
   doc.close();
 
-  const waitForResources = () => {
-    const images = Array.from(doc.images);
-    if (images.every((img) => img.complete)) {
-      printNow();
-    } else {
-      window.setTimeout(waitForResources, 50);
-    }
-  };
-  window.setTimeout(waitForResources, 0);
+  try {
+    await Promise.all(Array.from(doc.images, (image) => image.decode()));
+    printNow();
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
+/** Convenience wrapper for body HTML + CSS. */
+export function printHtml(bodyHtml: string, css: string, title: string): Promise<void> {
+  return printDocument(htmlDocument(bodyHtml, css, title), title);
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useDb } from '../context/DbProvider';
+import { useDb, usePlatform } from '../context/DbProvider';
 import {
   ProductRepo,
   StockRepo,
@@ -19,8 +19,8 @@ import type { Product, Variant, Category, Shop, ImportPreviewRow, ImportResult }
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
 import { registerBackHandler } from '../utils/back-nav';
-import { CameraScanButton, WedgeToggle, useWedgeMode } from '../components/ScanControls';
-import { printHtml } from '../utils/print';
+import { CameraScanButton, useWedgeMode } from '../components/ScanControls';
+import { htmlDocument } from '../utils/print';
 import { barcodeSvgString } from '../utils/barcode-svg';
 
 interface VariantFormState {
@@ -57,6 +57,7 @@ const LABEL_CSS = `
 
 export function ProductsScreen() {
   const db = useDb();
+  const platform = usePlatform();
   const location = useLocation();
   const navigate = useNavigate();
   const [shop, setShop] = useState<Shop | null>(null);
@@ -75,7 +76,7 @@ export function ProductsScreen() {
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
 
-  const [wedge, toggleWedge] = useWedgeMode();
+  const [wedge] = useWedgeMode();
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formName, setFormName] = useState('');
   const [formCategoryId, setFormCategoryId] = useState('');
@@ -90,6 +91,8 @@ export function ProductsScreen() {
   // Label printing: the product being labelled and its selected variant ids.
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
   const [labelSelected, setLabelSelected] = useState<string[]>([]);
+  // Global label selection across products (prototype table checkboxes).
+  const [globalLabelSelected, setGlobalLabelSelected] = useState<string[]>([]);
 
   // CSV Import Modal State
   const [csvModalOpen, setCsvModalOpen] = useState(false);
@@ -192,25 +195,62 @@ export function ProductsScreen() {
   // Builds A4 label sheets (3 columns x 8 rows = 24 labels per page) with the
   // variant name, price and a scannable EAN-13 barcode, then opens the print
   // dialog for exactly that content.
-  function handlePrintLabels() {
-    if (!labelProduct || !shop) return;
-    const selected = (variantsMap[labelProduct.id] || []).filter(
-      (v) => labelSelected.includes(v.id) && v.barcode && validateBarcode(v.barcode),
-    );
-    if (selected.length === 0) return;
+  async function printLabelsFor(
+    entries: { product: Product; variant: Variant }[],
+    title: string,
+  ): Promise<void> {
+    if (!shop) return;
+    const printable = entries.filter((e) => e.variant.barcode && validateBarcode(e.variant.barcode));
+    if (printable.length === 0) return;
 
-    const cells = selected
+    const cells = printable
       .map(
-        (v) => `
+        ({ product, variant }) => `
         <div class="cell">
-          <div class="name">${escapeHtml(labelProduct.name)}</div>
-          <div class="variant">${escapeHtml(v.name)}</div>
-          <div class="price">${escapeHtml(formatMoney(v.sale_price, shop.currency_decimals, shop.currency_code))}</div>
-          <div class="barcode">${barcodeSvgString(v.barcode!, { moduleWidth: 2, height: 36 })}</div>
+          <div class="name">${escapeHtml(product.name)}</div>
+          <div class="variant">${escapeHtml(variant.name)}</div>
+          <div class="price">${escapeHtml(formatMoney(variant.sale_price, shop.currency_decimals, shop.currency_code))}</div>
+          <div class="barcode">${barcodeSvgString(variant.barcode!, { moduleWidth: 2, height: 36 })}</div>
         </div>`,
       )
       .join('');
-    printHtml(`<div class="sheet">${cells}</div>`, LABEL_CSS, `Labels — ${labelProduct.name}`);
+    try {
+      setError('');
+      await platform.printer.printLabels(
+        htmlDocument(`<div class="sheet">${cells}</div>`, LABEL_CSS, title),
+      );
+    } catch (err) {
+      globalErrorLogger.log(err);
+      setError(err instanceof Error ? err.message : 'Could not open the print dialog.');
+    }
+  }
+
+  async function handlePrintLabels() {
+    if (!labelProduct) return;
+    const entries = (variantsMap[labelProduct.id] || [])
+      .filter((v) => labelSelected.includes(v.id))
+      .map((variant) => ({ product: labelProduct, variant }));
+    await printLabelsFor(entries, `Labels — ${labelProduct.name}`);
+  }
+
+  async function handlePrintGlobalLabels() {
+    const entries: { product: Product; variant: Variant }[] = [];
+    for (const product of products) {
+      for (const variant of variantsMap[product.id] || []) {
+        if (globalLabelSelected.includes(variant.id)) entries.push({ product, variant });
+      }
+    }
+    await printLabelsFor(entries, 'Labels — Selected products');
+  }
+
+  function toggleProductLabels(product: Product, checked: boolean) {
+    const printable = (variantsMap[product.id] || [])
+      .filter((v) => v.is_active === 1 && v.barcode && validateBarcode(v.barcode))
+      .map((v) => v.id);
+    setGlobalLabelSelected((prev) => {
+      if (checked) return Array.from(new Set([...prev, ...printable]));
+      return prev.filter((id) => !printable.includes(id));
+    });
   }
 
   function handleOpenCreate() {
@@ -458,19 +498,67 @@ export function ProductsScreen() {
 
   if (loading) {
     return (
-      <div className="p-8 text-gray-600" role="status">
+      <div className="vf-page text-sm text-slate-500" role="status">
         Loading catalog...
       </div>
     );
   }
 
+  const currency = shop?.currency_code ?? 'PKR';
+  const decimals = shop?.currency_decimals ?? 0;
+
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Products & Catalog</h1>
+    <div className="vf-page">
+      {error && (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
+          {error}
         </div>
-        <div className="flex gap-3">
+      )}
+      {success && (
+        <div
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+        >
+          {success}
+        </div>
+      )}
+
+      {/* Search, filters and actions */}
+      <div className="vf-card flex flex-col justify-between gap-3 p-4 md:flex-row md:items-center">
+        <div className="flex flex-1 flex-col gap-2.5 sm:flex-row">
+          <input
+            type="text"
+            placeholder="Search product name, SKU, or barcode…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="vf-input max-w-md flex-1"
+            aria-label="Search products"
+          />
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="vf-select w-full sm:w-52"
+            aria-label="Filter by category"
+          >
+            <option value="all">All Categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => void handlePrintGlobalLabels()}
+            disabled={globalLabelSelected.length === 0}
+            className="vf-btn-ghost"
+          >
+            Print Labels ({globalLabelSelected.length})
+          </button>
           <button
             onClick={() => {
               setCsvError('');
@@ -479,71 +567,35 @@ export function ProductsScreen() {
               setCsvGlobalErrors([]);
               setCsvModalOpen(true);
             }}
-            className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium px-5 py-2.5 rounded-lg min-h-11 border"
+            className="vf-btn-ghost"
           >
             Import CSV
           </button>
-          <button
-            onClick={handleOpenCreate}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
-          >
+          <button onClick={handleOpenCreate} className="vf-btn-primary">
             + Add Product
           </button>
         </div>
       </div>
 
-      {error && (
-        <div role="alert" className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div role="status" className="p-4 bg-green-50 text-green-700 rounded-lg border border-green-200">
-          {success}
-        </div>
-      )}
-
-      {/* Search and Filters */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row gap-4">
-        <input
-          type="text"
-          placeholder="Search by name, SKU, or barcode..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
-        />
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-4 py-2.5 border rounded-lg min-h-11 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
-        >
-          <option value="all">All Categories</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Product Grid / Table */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+      {/* Product table */}
+      <div className="vf-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="record-list w-full text-left border-collapse">
+          <table className="record-list vf-table">
             <thead>
-              <tr className="bg-gray-100 border-b text-gray-700 text-sm">
-                <th className="p-4 font-semibold">Product / Brand</th>
-                <th className="p-4 font-semibold">Category</th>
-                <th className="p-4 font-semibold">Variants</th>
-                <th className="p-4 font-semibold">Price Range</th>
-                <th className="p-4 font-semibold">Total Stock</th>
-                <th className="p-4 font-semibold text-right">Actions</th>
+              <tr>
+                <th className="w-10">Label</th>
+                <th>Product</th>
+                <th>Category</th>
+                <th>Variants &amp; Barcodes</th>
+                <th>Price Range</th>
+                <th className="text-right">Total Stock</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 text-sm">
+            <tbody>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     No products found.
                   </td>
                 </tr>
@@ -556,48 +608,93 @@ export function ProductsScreen() {
                   const maxPrice = prices.length ? Math.max(...prices) : 0;
                   const priceStr =
                     minPrice === maxPrice
-                      ? `PKR ${minPrice}`
-                      : `PKR ${minPrice} - PKR ${maxPrice}`;
+                      ? formatMoney(minPrice, decimals, currency)
+                      : `${formatMoney(minPrice, decimals, currency)} – ${formatMoney(maxPrice, decimals, currency)}`;
                   const totalStock = vars.reduce(
                     (sum, v) => sum + (stockMap[v.id] ?? 0),
                     0,
                   );
+                  const printableVars = vars.filter(
+                    (v) => v.is_active === 1 && v.barcode && validateBarcode(v.barcode),
+                  );
+                  const allLabelSelected =
+                    printableVars.length > 0 &&
+                    printableVars.every((v) => globalLabelSelected.includes(v.id));
 
                   return (
-                    <tr key={p.id} className="hover:bg-gray-50">
-                      <td data-label="Product / Brand" className="p-4">
-                        <div className="font-semibold text-gray-900">{p.name}</div>
-                        {p.brand && <div className="text-xs text-gray-500">{p.brand}</div>}
-                      </td>
-                      <td data-label="Category" className="p-4 text-gray-600">{cat?.name ?? 'Uncategorized'}</td>
-                      <td data-label="Variants" className="p-4">
-                        <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold">
-                          {vars.length} variant{vars.length === 1 ? '' : 's'}
-                        </span>
-                      </td>
-                      <td data-label="Price Range" className="p-4 font-medium text-gray-800">{priceStr}</td>
-                      <td data-label="Total Stock" className="p-4 font-semibold text-gray-900">{totalStock}</td>
-                      <td data-label="Actions" className="p-4 text-right space-x-2">
-                        {vars.length > 0 && (
-                          <button
-                            onClick={() => handleOpenLabels(p)}
-                            className="px-3 py-1.5 border rounded text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
-                          >
-                            Labels
-                          </button>
+                    <tr key={p.id}>
+                      <td data-label="Label">
+                        {printableVars.length > 0 ? (
+                          <input
+                            type="checkbox"
+                            checked={allLabelSelected}
+                            onChange={(e) => toggleProductLabels(p, e.target.checked)}
+                            className="h-5 w-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                            aria-label={`Select ${p.name} variants for labels`}
+                          />
+                        ) : (
+                          <span className="text-slate-300">—</span>
                         )}
-                        <button
-                          onClick={() => void handleOpenEdit(p)}
-                          className="px-3 py-1.5 border rounded text-emerald-600 hover:bg-emerald-50 min-h-11 font-medium"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirmId(p.id)}
-                          className="px-3 py-1.5 border rounded text-red-600 hover:bg-red-50 min-h-11 font-medium"
-                        >
-                          Deactivate
-                        </button>
+                      </td>
+                      <td data-label="Product">
+                        <div className="font-semibold text-slate-900">{p.name}</div>
+                        {p.brand && <div className="text-xs text-slate-500">{p.brand}</div>}
+                      </td>
+                      <td data-label="Category">
+                        <span className="vf-badge-slate">{cat?.name ?? 'Uncategorized'}</span>
+                      </td>
+                      <td data-label="Variants & Barcodes">
+                        <div className="flex flex-wrap gap-1">
+                          {vars.map((v) => (
+                            <span
+                              key={v.id}
+                              className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                            >
+                              <span>{v.name === 'Default' ? 'Single' : v.name}</span>
+                              {v.barcode && (
+                                <span className="vf-num text-[10px] text-slate-400">
+                                  ({v.barcode})
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                          {vars.length === 0 && <span className="text-xs text-slate-400">No variants</span>}
+                        </div>
+                      </td>
+                      <td data-label="Price Range" className="vf-num whitespace-nowrap font-semibold text-slate-900">
+                        {priceStr}
+                      </td>
+                      <td
+                        data-label="Total Stock"
+                        className={`vf-num text-right font-bold ${
+                          totalStock <= 0 ? 'text-rose-600' : 'text-slate-900'
+                        }`}
+                      >
+                        {totalStock}
+                      </td>
+                      <td data-label="Actions" className="text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          {vars.length > 0 && (
+                            <button
+                              onClick={() => handleOpenLabels(p)}
+                              className="vf-btn-ghost min-h-9 px-3 text-xs"
+                            >
+                              Labels
+                            </button>
+                          )}
+                          <button
+                            onClick={() => void handleOpenEdit(p)}
+                            className="vf-btn-ghost min-h-9 px-3 text-xs text-emerald-700"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(p.id)}
+                            className="vf-btn-danger min-h-9 px-3 text-xs"
+                          >
+                            Deactivate
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -610,22 +707,23 @@ export function ProductsScreen() {
 
       {/* Label Printing Modal */}
       {labelProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b pb-3">
-              <h2 className="text-xl font-bold text-gray-900">Print Labels — {labelProduct.name}</h2>
+        <div className="vf-modal">
+          <div className="vf-modal-card max-w-lg space-y-4 p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h2 className="text-lg font-bold text-slate-900">Print Labels — {labelProduct.name}</h2>
               <button
                 onClick={() => setLabelProduct(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+                className="icon-button text-xl font-bold"
+                aria-label="Close labels"
               >
                 ✕
               </button>
             </div>
-            <p className="text-sm text-gray-600">
+            <p className="vf-sub">
               Select the variants to label. Labels print on A4 sheets, 3 × 8 grid (24 per page), with the
               variant name, price and a scannable EAN-13 barcode.
             </p>
-            <div className="space-y-2 max-h-72 overflow-y-auto divide-y">
+            <div className="max-h-72 divide-y divide-slate-100 overflow-y-auto">
               {(variantsMap[labelProduct.id] || [])
                 .filter((v) => v.is_active === 1)
                 .map((v) => {
@@ -633,8 +731,8 @@ export function ProductsScreen() {
                   return (
                     <label
                       key={v.id}
-                      className={`flex items-center gap-3 p-2.5 rounded ${
-                        printable ? 'hover:bg-gray-50 cursor-pointer' : 'opacity-50'
+                      className={`flex items-center gap-3 rounded p-2.5 ${
+                        printable ? 'cursor-pointer hover:bg-slate-50' : 'opacity-50'
                       }`}
                     >
                       <input
@@ -642,33 +740,33 @@ export function ProductsScreen() {
                         disabled={!printable}
                         checked={labelSelected.includes(v.id)}
                         onChange={() => toggleLabelVariant(v.id)}
-                        className="w-5 h-5"
+                        className="h-5 w-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
-                      <span className="flex-1 min-w-0">
-                        <span className="block font-medium text-gray-900 text-sm truncate">{v.name}</span>
-                        <span className="block text-xs text-gray-500">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-slate-900">{v.name}</span>
+                        <span className="vf-num block text-xs text-slate-500">
                           {v.barcode ?? 'No barcode'}
                           {!printable && ' — not a valid EAN-13, skipped'}
                         </span>
                       </span>
-                      <span className="text-sm font-semibold text-gray-800">
-                        {formatMoney(v.sale_price, shop?.currency_decimals ?? 0, shop?.currency_code ?? 'PKR')}
+                      <span className="vf-num text-sm font-semibold text-slate-800">
+                        {formatMoney(v.sale_price, decimals, currency)}
                       </span>
                     </label>
                   );
                 })}
             </div>
-            <div className="flex justify-end gap-3 pt-3 border-t">
+            <div className="flex justify-end gap-3 border-t border-slate-200 pt-3">
               <button
                 onClick={() => setLabelProduct(null)}
-                className="px-5 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                className="vf-btn-ghost"
               >
                 Cancel
               </button>
               <button
-                onClick={handlePrintLabels}
+                onClick={() => void handlePrintLabels()}
                 disabled={labelSelected.length === 0}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
+                className="vf-btn-primary"
               >
                 Print {labelSelected.length} label{labelSelected.length === 1 ? '' : 's'}
               </button>
@@ -679,22 +777,22 @@ export function ProductsScreen() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full space-y-4 shadow-xl">
-            <h3 className="text-xl font-bold text-gray-900">Confirm Deactivation</h3>
-            <p className="text-gray-600">
+        <div className="vf-modal">
+          <div className="vf-modal-card max-w-md space-y-4 p-6">
+            <h3 className="text-xl font-bold text-slate-900">Confirm Deactivation</h3>
+            <p className="text-slate-600">
               Are you sure you want to deactivate this product and its variants? Historical snapshots will be preserved.
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                className="vf-btn-ghost"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void handleDeleteProduct(deleteConfirmId)}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg min-h-11 font-medium"
+                className="vf-btn-primary bg-rose-600 border-rose-600 hover:bg-rose-700"
               >
                 Deactivate
               </button>
@@ -705,17 +803,16 @@ export function ProductsScreen() {
 
       {/* Product Create / Edit Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-4xl w-full space-y-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-4">
-              <h2 className="text-2xl font-bold text-gray-900">
+        <div className="vf-modal overflow-y-auto">
+          <div className="vf-modal-card max-w-4xl space-y-6 p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <h2 className="text-xl font-bold text-slate-900">
                 {editingProduct ? 'Edit Product' : 'Create Product'}
               </h2>
               <div className="flex items-center gap-2">
-                <WedgeToggle wedge={wedge} onToggle={toggleWedge} />
                 <button
                   onClick={() => setModalOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+                  className="icon-button"
                 >
                   ✕
                 </button>
@@ -725,23 +822,23 @@ export function ProductsScreen() {
             <form onSubmit={handleSaveProduct} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
+                  <label className="vf-label">Product Name *</label>
                   <input
                     type="text"
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="vf-input"
                     placeholder="e.g. Premium Pod Kit"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <label className="vf-label">Category</label>
                   <div className="flex gap-2">
                     <select
                       value={formCategoryId}
                       onChange={(e) => setFormCategoryId(e.target.value)}
-                      className="flex-1 px-4 py-2.5 border rounded-lg min-h-11 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="vf-select flex-1"
                     >
                       <option value="">Uncategorized</option>
                       {categories.map((c) => (
@@ -753,7 +850,7 @@ export function ProductsScreen() {
                     <button
                       type="button"
                       onClick={() => setShowNewCatInput(!showNewCatInput)}
-                      className="px-3 py-2 border rounded-lg bg-gray-50 text-emerald-600 font-medium hover:bg-gray-100 min-h-11"
+                      className="vf-btn-ghost min-h-11 px-3 text-emerald-600"
                     >
                       + New
                     </button>
@@ -765,12 +862,12 @@ export function ProductsScreen() {
                         placeholder="Category name"
                         value={newCategoryName}
                         onChange={(e) => setNewCategoryName(e.target.value)}
-                        className="flex-1 px-3 py-2 border rounded-lg min-h-11 text-sm"
+                        className="vf-input flex-1"
                       />
                       <button
                         type="button"
                         onClick={() => void handleInlineCategoryCreate()}
-                        className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium min-h-11"
+                        className="vf-btn-primary min-h-11 px-3.5 text-sm"
                       >
                         Add
                       </button>
@@ -781,35 +878,35 @@ export function ProductsScreen() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+                  <label className="vf-label">Brand</label>
                   <input
                     type="text"
                     value={formBrand}
                     onChange={(e) => setFormBrand(e.target.value)}
-                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="vf-input"
                     placeholder="e.g. Smok / Vaporesso"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <label className="vf-label">Notes</label>
                   <input
                     type="text"
                     value={formNotes}
                     onChange={(e) => setFormNotes(e.target.value)}
-                    className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    className="vf-input"
                     placeholder="Optional notes"
                   />
                 </div>
               </div>
 
               {/* Variants Section */}
-              <div className="space-y-4 border-t pt-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold text-gray-800">Variants & Pricing</h3>
+              <div className="space-y-4 border-t border-slate-200 pt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="vf-title">Variants & Pricing</h3>
                   <button
                     type="button"
                     onClick={handleAddVariantRow}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium min-h-11"
+                    className="vf-btn-ghost min-h-10 px-3.5 text-sm"
                   >
                     + Add Variant
                   </button>
@@ -826,17 +923,17 @@ export function ProductsScreen() {
                     return (
                       <div
                         key={vf.id}
-                        className="p-4 bg-gray-50 border rounded-xl space-y-4 relative"
+                        className="relative space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
                       >
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-sm text-gray-700">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-slate-700">
                             Variant #{index + 1}
                           </span>
                           {formVariants.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleRemoveVariantRow(index)}
-                              className="text-red-600 hover:text-red-800 text-sm font-medium min-h-11 px-2"
+                              className="min-h-11 px-2 text-sm font-medium text-rose-600 hover:text-rose-800"
                             >
                               Remove
                             </button>
@@ -845,9 +942,7 @@ export function ProductsScreen() {
 
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Variant Name
-                            </label>
+                            <label className="vf-label">Variant Name</label>
                             <input
                               type="text"
                               value={vf.name}
@@ -857,12 +952,12 @@ export function ProductsScreen() {
                                   prev.map((item, i) => (i === index ? { ...item, name: val } : item)),
                                 );
                               }}
-                              className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                              className="vf-input text-sm"
                               placeholder="e.g. 3mg / Red"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">SKU</label>
+                            <label className="vf-label">SKU (optional)</label>
                             <input
                               type="text"
                               value={vf.sku}
@@ -872,14 +967,13 @@ export function ProductsScreen() {
                                   prev.map((item, i) => (i === index ? { ...item, sku: val } : item)),
                                 );
                               }}
-                              className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
-                              placeholder="SKU code"
+                              className="vf-input text-sm"
+                              placeholder="e.g. POD-3MG-RED"
+                              title="Your own internal code for this variant. Optional — search and scanning work from the name and barcode."
                             />
                           </div>
                           <div className="md:col-span-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Barcode (Enter advances focus)
-                            </label>
+                            <label className="vf-label">Barcode (Enter advances focus)</label>
                             <div className="flex gap-2">
                               <input
                                 ref={(el) => {
@@ -903,7 +997,7 @@ export function ProductsScreen() {
                                     }
                                   }
                                 }}
-                                className="flex-1 px-3 py-2 border rounded-lg min-h-11 bg-white text-sm min-w-0"
+                                className="vf-input min-w-0 flex-1 text-sm"
                                 placeholder={wedge ? 'Wedge: scan with OTG scanner…' : 'Scan or type barcode'}
                               />
                               <CameraScanButton
@@ -922,7 +1016,7 @@ export function ProductsScreen() {
                                     prev.map((item, i) => (i === index ? { ...item, barcode: gen } : item)),
                                   );
                                 }}
-                                className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs font-medium min-h-11"
+                                className="vf-btn-ghost min-h-10 px-3 text-xs"
                               >
                                 Generate
                               </button>
@@ -932,7 +1026,7 @@ export function ProductsScreen() {
 
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-2">
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                            <label className="vf-label">
                               Purchase price *
                             </label>
                             <input
@@ -946,11 +1040,11 @@ export function ProductsScreen() {
                                   prev.map((item, i) => (i === index ? { ...item, cost_price: val } : item)),
                                 );
                               }}
-                              className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                              className="vf-input text-sm"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                            <label className="vf-label">
                               Selling price *
                             </label>
                             <input
@@ -964,26 +1058,30 @@ export function ProductsScreen() {
                                   prev.map((item, i) => (i === index ? { ...item, sale_price: val } : item)),
                                 );
                               }}
-                              className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                              className="vf-input text-sm"
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="vf-label">
                               Per-unit Profit / Margin
                             </label>
-                            <div className="px-3 py-2 bg-white border rounded-lg text-xs font-medium text-gray-700 flex flex-col justify-center min-h-11">
-                              <span>PKR {profit}</span>
-                              <span className="text-gray-500">{margin}% margin</span>
+                            <div className="vf-input flex flex-col justify-center font-medium">
+                              <span>{formatMoney(profit, decimals, currency)}</span>
+                              <span className="text-slate-500">{margin}% margin</span>
                             </div>
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Threshold Override
+                            <label
+                              className="vf-label"
+                              title="Show a low-stock warning when this variant's stock reaches this number. Leave blank to use the shop default."
+                            >
+                              Low-stock alert at
                             </label>
                             <input
                               type="number"
                               min="0"
-                              placeholder="Default"
+                              placeholder={`Default (${shop?.default_low_stock_threshold ?? 3})`}
+                              title="Show a low-stock warning when this variant's stock reaches this number. Leave blank to use the shop default."
                               value={vf.low_stock_threshold}
                               onChange={(e) => {
                                 const val = e.target.value;
@@ -991,14 +1089,18 @@ export function ProductsScreen() {
                                   prev.map((item, i) => (i === index ? { ...item, low_stock_threshold: val } : item)),
                                 );
                               }}
-                              className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                              className="vf-input text-sm"
                             />
+                            <p className="vf-sub mt-1">Blank uses the shop default.</p>
                           </div>
                           <div>
                             {vf.isNew ? (
                               <>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  Opening Stock
+                                <label
+                                  className="vf-label"
+                                  title="Units you already have on hand. Recorded as an opening stock movement when you save."
+                                >
+                                  Opening stock
                                 </label>
                                 <input
                                   type="number"
@@ -1010,15 +1112,16 @@ export function ProductsScreen() {
                                       prev.map((item, i) => (i === index ? { ...item, opening_stock: val } : item)),
                                     );
                                   }}
-                                  className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                                  className="vf-input text-sm"
                                 />
+                                <p className="vf-sub mt-1">Units already on hand.</p>
                               </>
                             ) : (
                               <>
-                                <label className="block text-xs font-medium text-gray-400 mb-1">
-                                  Opening Stock
+                                <label className="vf-label text-slate-400">
+                                  Opening stock
                                 </label>
-                                <div className="px-3 py-2 border rounded-lg min-h-11 bg-gray-100 text-xs text-gray-500 flex items-center">
+                                <div className="flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-500">
                                   Existing variant — use Stock In / Adjustment to change stock
                                 </div>
                               </>
@@ -1041,13 +1144,13 @@ export function ProductsScreen() {
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-5 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                  className="vf-btn-ghost"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg min-h-11 font-medium shadow"
+                  className="vf-btn-primary"
                 >
                   Save Product
                 </button>
@@ -1059,13 +1162,13 @@ export function ProductsScreen() {
 
       {/* CSV Import Modal */}
       {csvModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-3xl w-full space-y-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-4">
-              <h2 className="text-2xl font-bold text-gray-900">Import Products from CSV</h2>
+        <div className="vf-modal overflow-y-auto">
+          <div className="vf-modal-card max-w-3xl space-y-6 p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <h2 className="text-xl font-bold text-slate-900">Import Products from CSV</h2>
               <button
                 onClick={() => setCsvModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+                className="icon-button"
               >
                 ✕
               </button>
@@ -1088,14 +1191,14 @@ export function ProductsScreen() {
                     a.click();
                     URL.revokeObjectURL(url);
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium min-h-11"
+                  className="vf-btn-primary min-h-10 px-3.5 text-sm"
                 >
                   Download Template
                 </button>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select CSV File</label>
+                <label className="vf-label mb-2">Select CSV File</label>
                 <input
                   type="file"
                   accept=".csv,text/csv"
@@ -1114,12 +1217,12 @@ export function ProductsScreen() {
                     };
                     reader.readAsText(file);
                   }}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                  className="vf-file-input"
                 />
               </div>
 
               {csvGlobalErrors.length > 0 && (
-                <div className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 space-y-1">
+                <div className="space-y-1 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
                   <h4 className="font-semibold">Parse Errors:</h4>
                   {csvGlobalErrors.map((err, i) => (
                     <p key={i} className="text-sm">{err}</p>
@@ -1128,22 +1231,22 @@ export function ProductsScreen() {
               )}
 
               {csvPreviewRows.length > 0 && (
-                <div className="space-y-4 border-t pt-4">
-                  <div className="flex justify-between items-center">
+                <div className="space-y-4 border-t border-slate-200 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h3 className="font-semibold text-gray-800">Preview ({csvPreviewRows.length} rows)</h3>
-                      <p className="text-xs text-gray-500">
+                      <h3 className="font-semibold text-slate-800">Preview ({csvPreviewRows.length} rows)</h3>
+                      <p className="vf-sub">
                         Valid rows: {csvPreviewRows.filter(r => r.errors.length === 0).length} |
                         Errors: {csvPreviewRows.filter(r => r.errors.length > 0).length} |
                         Existing variants matched: {csvPreviewRows.filter(r => r.matchBy).length}
                       </p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mr-2">Existing Barcodes Strategy:</label>
+                      <label className="mr-2 text-sm font-medium text-slate-700">Existing Barcodes Strategy:</label>
                       <select
                         value={csvPriceStrategy}
                         onChange={(e) => setCsvPriceStrategy(e.target.value as 'skip' | 'update')}
-                        className="border rounded px-3 py-1.5 text-sm bg-white"
+                        className="vf-select w-auto min-h-10 py-1.5 text-sm"
                       >
                         <option value="skip">Skip existing</option>
                         <option value="update">Update prices</option>
@@ -1151,9 +1254,9 @@ export function ProductsScreen() {
                     </div>
                   </div>
 
-                  <div className="max-h-60 overflow-y-auto border rounded-lg">
+                  <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-gray-100 border-b">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                         <tr>
                           <th className="p-2">Row</th>
                           <th className="p-2">Product</th>
@@ -1164,20 +1267,20 @@ export function ProductsScreen() {
                           <th className="p-2">Status</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody className="divide-y divide-slate-100">
                         {csvPreviewRows.map((r) => {
                           const hasErr = r.errors.length > 0;
                           return (
-                            <tr key={r.rowNumber} className={hasErr ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                            <tr key={r.rowNumber} className={hasErr ? 'bg-rose-50' : 'hover:bg-slate-50'}>
                               <td className="p-2 font-mono">{r.rowNumber}</td>
                               <td className="p-2 font-medium">{r.data.product_name || '(empty)'}</td>
                               <td className="p-2">{r.data.variant_name}</td>
                               <td className="p-2 font-mono">{r.data.barcode || '—'}</td>
-                              <td className="p-2">PKR {r.data.sale_price}</td>
+                              <td className="p-2">{formatMoney(r.data.sale_price, decimals, currency)}</td>
                               <td className="p-2">{r.data.opening_stock}</td>
                               <td className="p-2">
                                 {hasErr ? (
-                                  <span className="text-red-600 font-semibold" title={r.errors.join(', ')}>
+                                  <span className="font-semibold text-rose-600" title={r.errors.join(', ')}>
                                     Error ({r.errors.length})
                                   </span>
                                 ) : r.matchBy ? (
@@ -1188,7 +1291,7 @@ export function ProductsScreen() {
                                     Exists ({r.matchBy === 'barcode' ? 'barcode' : 'name'})
                                   </span>
                                 ) : (
-                                  <span className="text-green-600 font-semibold">New</span>
+                                  <span className="font-semibold text-emerald-600">New</span>
                                 )}
                               </td>
                             </tr>
@@ -1201,18 +1304,18 @@ export function ProductsScreen() {
               )}
 
               {csvError && (
-                <div role="alert" className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 text-sm">
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                   {csvError}
                 </div>
               )}
 
               {csvImporting && (
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>Importing rows...</span>
-                    <span>{csvProgress.current} / {csvProgress.total}</span>
+                  <div className="flex justify-between text-sm text-slate-600">
+                    <span>Importing rows…</span>
+                    <span className="vf-num">{csvProgress.current} / {csvProgress.total}</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div className="h-2.5 w-full rounded-full bg-slate-200">
                     <div
                       className="bg-emerald-600 h-2.5 rounded-full transition-all duration-200"
                       style={{ width: `${(csvProgress.current / (csvProgress.total || 1)) * 100}%` }}
@@ -1222,22 +1325,22 @@ export function ProductsScreen() {
               )}
 
               {csvResult && (
-                <div className="p-4 bg-green-50 text-green-800 rounded-lg border border-green-200 space-y-1">
+                <div className="space-y-1 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
                   <h4 className="font-bold">Import Completed Successfully!</h4>
                   <p className="text-sm">Imported new: {csvResult.importedCount}</p>
                   <p className="text-sm">Updated existing: {csvResult.updatedCount}</p>
                   <p className="text-sm">Skipped: {csvResult.skippedCount}</p>
                   {csvResult.errors.length > 0 && (
-                    <p className="text-sm text-red-600">Errors encountered: {csvResult.errors.length}</p>
+                    <p className="text-sm text-rose-600">Errors encountered: {csvResult.errors.length}</p>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
               <button
                 onClick={() => setCsvModalOpen(false)}
-                className="px-5 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                className="vf-btn-ghost"
               >
                 Close
               </button>
@@ -1275,9 +1378,9 @@ export function ProductsScreen() {
                     setCsvImporting(false);
                   }
                 }}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg min-h-11 font-medium shadow"
+                className="vf-btn-primary"
               >
-                {csvImporting ? 'Importing...' : `Import ${csvPreviewRows.filter(r => r.errors.length === 0).length} Valid Rows`}
+                {csvImporting ? 'Importing…' : `Import ${csvPreviewRows.filter(r => r.errors.length === 0).length} Valid Rows`}
               </button>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { useCloudSync } from '../context/CloudSyncProvider';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
 import {
@@ -16,9 +17,11 @@ import { registerBackHandler } from '../utils/back-nav';
 import { ReturnReceiptModal } from '../components/ReturnReceiptModal';
 import type { ReturnReceipt } from '../utils/return-receipt';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { useToast } from '../components/Toast';
 
 export function SalesScreen() {
   const db = useDb();
+  const toast = useToast();
   const [returnReceipt, setReturnReceipt] = useState<ReturnReceipt | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -28,6 +31,8 @@ export function SalesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const lastSync = useCloudSync().status.lastSuccessAt;
+  const [overReturns, setOverReturns] = useState<Awaited<ReturnType<ReturnRepo['getOverReturns']>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -64,6 +69,7 @@ export function SalesScreen() {
 
       // Load returns and return items through the repository (zod-validated).
       const returnRepo = new ReturnRepo(db);
+      setOverReturns(await returnRepo.getOverReturns(activeShop.id));
       const returnsList = await returnRepo.getReturns(activeShop.id);
       const returnItemsList = await returnRepo.getReturnItems(activeShop.id);
 
@@ -92,7 +98,7 @@ export function SalesScreen() {
 
   useEffect(() => {
     void loadData();
-  }, [loadData]);
+  }, [loadData, lastSync]);
 
   // Android back button: close the topmost receipt/return modal first. The
   // return-form panel is inline state, not a stacked dialog, so only modals
@@ -115,7 +121,7 @@ export function SalesScreen() {
       if (res) setSelectedSaleResult(res);
     } catch (err) {
       globalErrorLogger.log(err);
-      window.alert('Could not load receipt details.');
+      setError('Could not load receipt details.');
     }
   }
 
@@ -139,7 +145,7 @@ export function SalesScreen() {
       }
     } catch (err) {
       globalErrorLogger.log(err);
-      window.alert('Could not open return modal.');
+      setError('Could not open return modal.');
     }
   }
 
@@ -208,6 +214,7 @@ export function SalesScreen() {
 
       setReturnReceipt({ ...result, sale: returningSale.sale, saleItems: returningSale.items });
       setReturningSale(null);
+      toast.show('Return processed');
       // A restocking return writes stock movements: refresh the badge now.
       notifyStockChanged();
       await loadData();
@@ -248,93 +255,116 @@ export function SalesScreen() {
   }
 
   if (loading) {
-    return <div className="p-6 text-gray-600">Loading sales history...</div>;
+    return <div className="vf-page text-sm text-slate-500">Loading sales history…</div>;
   }
 
   const currency = shop?.currency_code ?? 'PKR';
+  const decimals = shop?.currency_decimals ?? 0;
+  const selectedReturned: Record<string, number> = {};
+  if (selectedSaleResult) {
+    for (const item of selectedSaleResult.items) {
+      const returnedItems = returnItemsMap.get(item.id) ?? [];
+      selectedReturned[item.id] = returnedItems.reduce((sum, ri) => sum + ri.qty, 0);
+    }
+  }
 
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Sales History & Returns</h1>
-        </div>
+    <div className="vf-page">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="vf-sub max-w-xl">
+          Immutable sale ledger with reprints, per-line returns and refund history.
+        </p>
       </div>
 
+      {overReturns.length > 0 && <section role="alert" className="rounded-xl border border-amber-400 p-3">
+        <h2>Returns requiring reconciliation</h2>
+        <p>Check the refund payments and count the stock for these receipts.</p>
+        <ul>{overReturns.map(row => <li key={row.item_id}>{row.receipt_no} · {row.product_name} ({row.variant_name}) · Sold {row.sold}, returned {row.returned}</li>)}</ul>
+      </section>}
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
           {error}
         </div>
       )}
 
-      {/* Search & Date Filters */}
-      <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
+      {/* Search and date filters */}
+      <div className="vf-card flex flex-col items-stretch justify-between gap-4 p-4 md:flex-row md:items-end">
         <div className="w-full md:w-96">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Search Receipt No or Note</label>
+          <label className="vf-label" htmlFor="sales-search">
+            Search Receipt No or Note
+          </label>
           <input
+            id="sales-search"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="e.g. PC-000001..."
-            className="w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="e.g. PC1-000001"
+            className="vf-input"
           />
         </div>
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap items-end gap-2">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">From Date</label>
+            <label className="vf-label" htmlFor="sales-from">
+              From Date
+            </label>
             <input
+              id="sales-from"
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm"
+              className="vf-input"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">To Date</label>
+            <label className="vf-label" htmlFor="sales-to">
+              To Date
+            </label>
             <input
+              id="sales-to"
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm"
+              className="vf-input"
             />
           </div>
           {(searchQuery || startDate || endDate) && (
-            <div className="flex items-end">
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setStartDate('');
-                  setEndDate('');
-                }}
-                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium min-h-11"
-              >
-                Reset
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setStartDate('');
+                setEndDate('');
+              }}
+              className="vf-btn-ghost"
+            >
+              Reset
+            </button>
           )}
         </div>
       </div>
 
-      {/* Per-Day Totals Summary */}
+      {/* Per-day totals summary */}
       {dailyTotals.size > 0 && (
-        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl space-y-2">
+        <div className="space-y-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <h3 className="text-sm font-bold text-emerald-900">Per-Day Totals (Filtered Range)</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
             {[...dailyTotals.entries()].map(([date, stats]) => (
-              <div key={date} className="bg-white p-3 rounded-lg border shadow-xs text-xs space-y-1">
-                <div className="font-bold text-gray-800">{date}</div>
-                <div className="flex justify-between text-gray-600">
+              <div key={date} className="space-y-1 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                <div className="font-bold text-slate-800">{date}</div>
+                <div className="flex justify-between text-slate-600">
                   <span>Sales:</span>
-                  <span className="font-semibold">{stats.count}</span>
+                  <span className="vf-num font-semibold">{stats.count}</span>
                 </div>
-                <div className="flex justify-between text-gray-600">
+                <div className="flex justify-between text-slate-600">
                   <span>Revenue:</span>
-                  <span className="font-semibold text-emerald-700">{formatMoney(stats.total, 0, currency)}</span>
+                  <span className="vf-num font-semibold text-emerald-700">{formatMoney(stats.total, decimals, currency)}</span>
                 </div>
                 {stats.refunds > 0 && (
-                  <div className="flex justify-between text-red-600">
+                  <div className="flex justify-between text-rose-600">
                     <span>Refunds:</span>
-                    <span className="font-semibold">-{formatMoney(stats.refunds, 0, currency)}</span>
+                    <span className="vf-num font-semibold">-{formatMoney(stats.refunds, decimals, currency)}</span>
                   </div>
                 )}
               </div>
@@ -351,13 +381,17 @@ export function SalesScreen() {
             const refunded = returns.reduce((sum, r) => sum + r.refund_amount, 0);
             return <button key={sale.id} onClick={() => void handleViewReceipt(sale)}
               aria-pressed={sale.id === selectedSaleResult?.sale.id} className="receipt-row">
-              <span>
-                <strong>{sale.receipt_no}</strong>
-                <small>{new Date(sale.sold_at).toLocaleString()} · {sale.payment_method}</small>
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <strong>{sale.receipt_no}</strong>
+                  <span className="vf-badge-slate uppercase">{sale.payment_method}</span>
+                  {returns.length > 0 && <span className="vf-badge-amber">Returned</span>}
+                </span>
+                <small>{new Date(sale.sold_at).toLocaleString()}</small>
               </span>
               <span className="text-right">
-                <strong>{formatMoney(sale.total, 0, currency)}</strong>
-                {returns.length > 0 && <small>{returns.length} returned · {formatMoney(refunded, 0, currency)}</small>}
+                <strong>{formatMoney(sale.total, decimals, currency)}</strong>
+                {returns.length > 0 && <small>{returns.length} return(s) · {formatMoney(refunded, decimals, currency)}</small>}
               </span>
             </button>;
           })}
@@ -365,18 +399,25 @@ export function SalesScreen() {
       {/* Receipt Modal */}
       {selectedSaleResult && shop && (
         <ReceiptModal
-          actions={<div className="flex flex-wrap items-center gap-2 p-3 border-t">
-            <button className="min-h-11 rounded-xl px-4 bg-rose-50 text-rose-700 font-semibold"
-              onClick={() => void openReturnModal(selectedSaleResult.sale)}>Process return</button>
-            {(returnsMap.get(selectedSaleResult.sale.id) ?? []).map((ret, index) =>
-              <button key={ret.id} className="min-h-11 px-3 border rounded-xl" onClick={() => {
-                const items = [...returnItemsMap.values()].flat().filter(item => item.return_id === ret.id);
-                setReturnReceipt({ ret, items, sale: selectedSaleResult.sale, saleItems: selectedSaleResult.items });
-              }}>Return receipt {index + 1}</button>)}
-          </div>}
+          actions={
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 p-3">
+              <button
+                className="vf-btn-danger"
+                onClick={() => void openReturnModal(selectedSaleResult.sale)}
+              >
+                Process return
+              </button>
+            </div>
+          }
           historyPanel
           result={selectedSaleResult}
           shop={shop}
+          returnedQuantities={selectedReturned}
+          returns={returnsMap.get(selectedSaleResult.sale.id) ?? []}
+          onReturnReceipt={(ret) => {
+            const items = [...returnItemsMap.values()].flat().filter(item => item.return_id === ret.id);
+            setReturnReceipt({ ret, items, sale: selectedSaleResult.sale, saleItems: selectedSaleResult.items });
+          }}
           onClose={() => setSelectedSaleResult(null)}
         />
       )}
@@ -386,27 +427,28 @@ export function SalesScreen() {
       {returnReceipt && shop && <ReturnReceiptModal result={returnReceipt} shop={shop} onClose={() => setReturnReceipt(null)} />}
       {/* Return Modal */}
       {returningSale && shop && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 bg-gray-900 text-white flex justify-between items-center">
-              <h3 className="font-bold text-lg">Process Return — Receipt {returningSale.sale.receipt_no}</h3>
+        <div className="vf-modal">
+          <div className="vf-modal-card flex max-h-[90vh] max-w-2xl flex-col overflow-hidden">
+            <div className="flex items-center justify-between bg-slate-900 p-4 text-white">
+              <h3 className="text-base font-bold">Process Return — Receipt {returningSale.sale.receipt_no}</h3>
               <button
                 onClick={() => setReturningSale(null)}
-                className="text-gray-400 hover:text-white font-bold text-xl px-2"
+                className="icon-button text-xl font-bold text-slate-300 hover:bg-slate-800 hover:text-white"
+                aria-label="Close return"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSubmitReturn} className="p-6 overflow-y-auto space-y-6 flex-1">
+            <form onSubmit={handleSubmitReturn} className="flex-1 space-y-6 overflow-y-auto p-5">
               {returnError && (
-                <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {returnError}
                 </div>
               )}
               <div className="space-y-3">
-                <h4 className="text-sm font-bold text-gray-800">Select items and quantities to return:</h4>
-                <div className="border rounded-lg divide-y bg-gray-50">
+                <h4 className="text-sm font-bold text-slate-800">Select items and quantities to return:</h4>
+                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-slate-50">
                   {returningSale.items.map((item) => {
                     const returnedItems = returnItemsMap.get(item.id) || [];
                     const alreadyReturned = returnedItems.reduce((sum, ri) => sum + ri.qty, 0);
@@ -415,12 +457,12 @@ export function SalesScreen() {
                     const isRestocked = returnRestocked[item.id] ?? true;
 
                     return (
-                      <div key={item.id} className="p-3 bg-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-gray-900 text-sm">
-                            {item.product_name} <span className="text-gray-500 font-normal">({item.variant_name})</span>
+                      <div key={item.id} className="flex flex-col items-start justify-between gap-3 bg-white p-3 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-slate-900">
+                            {item.product_name} <span className="font-normal text-slate-500">({item.variant_name})</span>
                           </div>
-                          <div className="text-xs text-gray-600 mt-0.5 space-x-3">
+                          <div className="mt-0.5 space-x-3 text-xs text-slate-600">
                             <span>Sold Qty: {item.qty}</span>
                             <span>Already Returned: {alreadyReturned}</span>
                             <span className="font-bold text-emerald-700">Remaining: {remainingQty}</span>
@@ -428,21 +470,21 @@ export function SalesScreen() {
                         </div>
 
                         {remainingQty > 0 ? (
-                          <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                            <label className="flex items-center gap-1.5 text-xs text-gray-700">
+                          <div className="flex w-full items-center justify-between gap-4 sm:w-auto sm:justify-end">
+                            <label className="flex items-center gap-1.5 text-xs text-slate-700">
                               <input
                                 type="checkbox"
                                 checked={isRestocked}
                                 onChange={(e) =>
                                   setReturnRestocked({ ...returnRestocked, [item.id]: e.target.checked })
                                 }
-                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                               />
                               Restock item
                             </label>
 
                             <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-gray-600">Return Qty:</span>
+                              <span className="text-xs font-medium text-slate-600">Return Qty:</span>
                               <input
                                 type="number"
                                 min="0"
@@ -454,12 +496,12 @@ export function SalesScreen() {
                                     [item.id]: Math.min(remainingQty, Math.max(0, parseInt(e.target.value || '0', 10))),
                                   })
                                 }
-                                className="w-16 border rounded px-2 py-1 text-center text-sm"
+                                className="vf-input w-16 px-2 text-center"
                               />
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs font-medium text-gray-400 italic">Fully returned</span>
+                          <span className="text-xs font-medium italic text-slate-400">Fully returned</span>
                         )}
                       </div>
                     );
@@ -467,44 +509,50 @@ export function SalesScreen() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Refund Method</label>
+                  <label className="vf-label" htmlFor="refund-method">
+                    Refund Method
+                  </label>
                   <select
+                    id="refund-method"
                     value={refundMethod}
                     onChange={(e) => setRefundMethod(e.target.value as 'cash' | 'online')}
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                    className="vf-select"
                   >
                     <option value="cash">Cash Refund</option>
                     <option value="online">Online / Card Refund</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Return Note / Reason</label>
+                  <label className="vf-label" htmlFor="return-note">
+                    Return Note / Reason
+                  </label>
                   <input
+                    id="return-note"
                     type="text"
                     value={returnNote}
                     onChange={(e) => setReturnNote(e.target.value)}
-                    placeholder="Optional return reason..."
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="Optional return reason…"
+                    className="vf-input"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
+              <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
                 <button
                   type="button"
                   onClick={() => setReturningSale(null)}
-                  className="px-4 py-2.5 border rounded-xl hover:bg-gray-100 font-medium text-sm text-gray-700 min-h-11"
+                  className="vf-btn-ghost"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingReturn}
-                  className="bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white font-bold py-2.5 px-6 rounded-xl text-sm shadow transition-colors min-h-11"
+                  className="vf-btn-primary bg-rose-600 border-rose-600 hover:bg-rose-700"
                 >
-                  {submittingReturn ? 'Processing...' : 'Confirm Return'}
+                  {submittingReturn ? 'Processing…' : 'Confirm Return'}
                 </button>
               </div>
             </form>

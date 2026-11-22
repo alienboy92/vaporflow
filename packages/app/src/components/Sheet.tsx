@@ -38,8 +38,8 @@ export function Sheet({
       }}
     >
       <div className="p-4">
-        <header className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-lg">{title}</h2>
+        <header className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+          <h2 className="vf-title">{title}</h2>
           <button className="icon-button" aria-label="Close" onClick={onClose}>
             ✕
           </button>

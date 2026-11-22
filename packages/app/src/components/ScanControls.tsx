@@ -1,5 +1,5 @@
 /**
- * Shared barcode-input controls (Phase 9): the camera scan button wired to
+ * Shared barcode-input controls: the camera scan button wired to
  * the platform ScannerAdapter, and the OTG wedge-mode toggle. Wedge mode
  * switches barcode inputs to `inputMode="none"` so the soft keyboard never
  * pops up while a physical scanner types into the focused field.
@@ -67,10 +67,10 @@ export function WedgeToggle({ wedge, onToggle, compact }: WedgeToggleProps) {
           ? 'Scanner wedge mode is ON: the soft keyboard is suppressed so a USB/OTG scanner can type into this field. Tap for manual entry.'
           : 'Manual entry. Tap to switch to scanner wedge mode (suppresses the soft keyboard for USB/OTG scanners).'
       }
-      className={`shrink-0 rounded-lg border px-3 py-3 min-h-11 text-xs font-medium ${
+      className={`min-h-11 shrink-0 rounded-xl border px-3 py-3 text-xs font-medium ${
         wedge
           ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-          : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-100'
+          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
       }`}
     >
       {compact ? <Icon name="keyboard" /> : wedge ? 'Scanner' : 'Manual'}

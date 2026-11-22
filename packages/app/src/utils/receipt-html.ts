@@ -14,7 +14,7 @@ function money(shop: Shop, amount: number): string {
   return escapeHtml(formatMoney(amount, shop.currency_decimals, shop.currency_code));
 }
 
-function formatDateTime(iso: string): string {
+export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return escapeHtml(iso);
   const pad = (n: number) => String(n).padStart(2, '0');

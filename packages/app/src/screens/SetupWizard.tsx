@@ -5,6 +5,7 @@ import { ShopRepo } from '@vaporflow/core';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
 import { uuidv7 } from '@vaporflow/core';
+import { Icon } from '../components/Icon';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -17,21 +18,28 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [mode, setMode] = useState<Mode>('create');
 
   return (
-    <main className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
-      <div className="max-w-xl w-full bg-white rounded-xl shadow-md p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">VaporFlow — First-Run Setup</h1>
-        <p className="text-gray-600 mb-6">Configure your local shop and device.</p>
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+      <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="mb-6 flex items-center gap-3">
+          <span className="brand-mark">
+            <Icon name="zap" />
+          </span>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">First-Run Setup</h1>
+            <p className="vf-sub">Configure your local shop and device.</p>
+          </div>
+        </div>
 
-        <div className="flex gap-2 mb-6" role="tablist" aria-label="Setup mode">
+        <div className="mb-6 flex gap-2" role="tablist" aria-label="Setup mode">
           <button
             type="button"
             role="tab"
             aria-selected={mode === 'create'}
             onClick={() => setMode('create')}
-            className={`flex-1 rounded p-2.5 min-h-11 font-medium border ${
+            className={`min-h-11 flex-1 rounded-xl border p-2.5 text-sm font-semibold ${
               mode === 'create'
-                ? 'bg-emerald-700 text-white border-emerald-700'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                ? 'border-emerald-600 bg-emerald-600 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             New shop
@@ -41,10 +49,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             role="tab"
             aria-selected={mode === 'join'}
             onClick={() => setMode('join')}
-            className={`flex-1 rounded p-2.5 min-h-11 font-medium border ${
+            className={`min-h-11 flex-1 rounded-xl border p-2.5 text-sm font-semibold ${
               mode === 'join'
-                ? 'bg-emerald-700 text-white border-emerald-700'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                ? 'border-emerald-600 bg-emerald-600 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             Join an existing shop
@@ -153,17 +161,17 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div role="alert" className="mb-4 p-3 bg-red-50 text-red-700 rounded border border-red-200">
+        <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700">
           {error}
         </div>
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name *</label>
+        <label className="vf-label">Shop Name *</label>
         <input
           type="text"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+          className="vf-input text-base"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Vapor Central"
@@ -171,10 +179,10 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+        <label className="vf-label">Address</label>
         <input
           type="text"
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+          className="vf-input text-base"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           placeholder="e.g. Shop 4, Plaza Market"
@@ -182,10 +190,10 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+        <label className="vf-label">Phone</label>
         <input
           type="text"
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+          className="vf-input text-base"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="e.g. 03001234567"
@@ -194,23 +202,23 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Device Code *</label>
+          <label className="vf-label">Device Code *</label>
           <input
             type="text"
             required
             maxLength={4}
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base uppercase focus:ring-2 focus:ring-emerald-500"
+            className="vf-input text-base uppercase"
             value={deviceCode}
             onChange={(e) => setDeviceCode(e.target.value.toUpperCase())}
             placeholder="PC1 or PH1"
           />
-          <span className="text-xs text-gray-500 mt-1 block">2 to 4 uppercase chars (e.g. PC1)</span>
+          <span className="vf-sub mt-1 block">2 to 4 uppercase chars (e.g. PC1)</span>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+          <label className="vf-label">Device Name</label>
           <input
             type="text"
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+            className="vf-input text-base"
             value={deviceName}
             onChange={(e) => setDeviceName(e.target.value)}
             placeholder="e.g. Counter PC"
@@ -219,21 +227,21 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Shop Logo (Optional)</label>
+        <label className="vf-label">Shop Logo (Optional)</label>
         <input
           type="file"
           accept="image/*"
-          className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 min-h-11"
+          className="vf-file-input"
           onChange={handleLogoChange}
         />
-        {logoError && <p className="text-sm text-red-600 mt-1">{logoError}</p>}
+        {logoError && <p className="mt-1 text-sm text-rose-600">{logoError}</p>}
         {logoBase64 && (
           <div className="mt-2 flex items-center gap-3">
-            <img src={logoBase64} alt="Logo preview" className="h-12 w-12 object-contain border rounded" />
-            <span className="text-sm text-green-600">Logo loaded (resized to max 256px)</span>
+            <img src={logoBase64} alt="Logo preview" className="h-12 w-12 rounded-lg border border-slate-200 object-contain" />
+            <span className="text-sm text-emerald-600">Logo loaded (resized to max 256px)</span>
             <button
               type="button"
-              className="text-sm text-red-600 underline"
+              className="text-sm text-rose-600 underline"
               onClick={() => setLogoBase64(null)}
             >
               Remove
@@ -246,11 +254,11 @@ function CreateShopForm({ onComplete }: { onComplete: () => void }) {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded bg-emerald-700 text-white p-3 min-h-11 font-medium hover:bg-emerald-800 disabled:opacity-50"
+          className="vf-btn-primary w-full"
         >
-          {submitting ? 'Setting up...' : 'Save & Start'}
+          {submitting ? 'Setting up…' : 'Save & Start'}
         </button>
-        <p className="text-xs text-gray-500 mt-3">
+        <p className="vf-sub mt-3">
           You can connect this shop to the cloud later in Settings → Cloud Connection.
         </p>
       </div>
@@ -300,19 +308,20 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
   if (joinedCode !== null) {
     return (
       <div className="space-y-4">
-        <div className="p-4 bg-green-50 border border-green-200 rounded" role="status">
-          <p className="font-medium text-green-800">Joined! Shop data downloaded to this device.</p>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4" role="status">
+          <p className="font-medium text-emerald-800">Joined! Shop data downloaded to this device.</p>
         </div>
         <div>
-          <span className="block text-sm font-medium text-gray-700 mb-1">This device&apos;s code</span>
-          <span className="text-2xl font-mono font-bold tracking-widest text-emerald-800">{joinedCode}</span>
-          <p className="text-xs text-gray-500 mt-1">
+          <span className="vf-label">This device&apos;s code</span>
+          <span className="font-mono text-2xl font-bold tracking-widest text-emerald-700">{joinedCode}</span>
+          <p className="vf-sub mt-1">
             The owner device will see this code in Settings → Cloud Connection → Devices.
-          </p>        </div>
+          </p>
+        </div>
         <button
           type="button"
           onClick={onComplete}
-          className="w-full rounded bg-emerald-700 text-white p-3 min-h-11 font-medium hover:bg-emerald-800"
+          className="vf-btn-primary w-full"
         >
           Start using VaporFlow
         </button>
@@ -323,22 +332,22 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
   return (
     <form onSubmit={handleJoin} className="space-y-4">
       {error && (
-        <div role="alert" className="mb-4 p-3 bg-red-50 text-red-700 rounded border border-red-200">
+        <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-700">
           {error}
         </div>
       )}
 
-      <p className="text-sm text-gray-600">
+      <p className="vf-sub">
         This joins a shop created on another device. You need the owner&apos;s Supabase project
         credentials, your cloud account, and the Shop ID shown on the owner device.
       </p>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Supabase Project URL *</label>
+        <label className="vf-label">Supabase Project URL *</label>
         <input
           type="url"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+          className="vf-input text-base"
           value={supabaseUrl}
           onChange={(e) => setSupabaseUrl(e.target.value)}
           placeholder="https://xxxx.supabase.co"
@@ -346,11 +355,11 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Supabase Anon Key *</label>
+        <label className="vf-label">Supabase Anon Key *</label>
         <input
           type="password"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+          className="vf-input text-base"
           value={anonKey}
           onChange={(e) => setAnonKey(e.target.value)}
           placeholder="Paste the anon (public) key"
@@ -359,24 +368,24 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <label className="vf-label">Email *</label>
           <input
             type="email"
             required
             autoComplete="email"
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+            className="vf-input text-base"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <label className="vf-label">Password *</label>
           <input
             type="password"
             required
             autoComplete="current-password"
-            className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+            className="vf-input text-base"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Cloud account password"
@@ -385,11 +394,11 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Shop ID *</label>
+        <label className="vf-label">Shop ID *</label>
         <input
           type="text"
           required
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base font-mono focus:ring-2 focus:ring-emerald-500"
+          className="vf-input font-mono text-base"
           value={shopId}
           onChange={(e) => setShopId(e.target.value)}
           placeholder="UUID from the owner device's Settings"
@@ -397,10 +406,10 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+        <label className="vf-label">Device Name</label>
         <input
           type="text"
-          className="w-full rounded border border-gray-300 p-3 min-h-11 text-base focus:ring-2 focus:ring-emerald-500"
+          className="vf-input text-base"
           value={deviceName}
           onChange={(e) => setDeviceName(e.target.value)}
           placeholder="e.g. Counter Phone"
@@ -411,11 +420,11 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
         <button
           type="submit"
           disabled={submitting || sync.busy}
-          className="w-full rounded bg-emerald-700 text-white p-3 min-h-11 font-medium hover:bg-emerald-800 disabled:opacity-50"
+          className="vf-btn-primary w-full"
         >
-          {submitting || sync.busy ? 'Joining shop...' : 'Join Shop & Sync'}
+          {submitting || sync.busy ? 'Joining shop…' : 'Join Shop & Sync'}
         </button>
-        <p className="text-xs text-gray-500 mt-3">
+        <p className="vf-sub mt-3">
           Only use this on a device with no local shop yet. The full shop data is downloaded once.
         </p>
       </div>

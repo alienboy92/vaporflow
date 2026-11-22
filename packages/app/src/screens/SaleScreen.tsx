@@ -26,6 +26,7 @@ import { useCloudSync } from '../context/CloudSyncProvider';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../components/Icon';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { useToast } from '../components/Toast';
 
 interface CartLine {
   variant_id: string;
@@ -38,9 +39,22 @@ interface CartLine {
   cost_price: number;
 }
 
-export function SaleScreen() {
+export function useSaleDraft() {
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online'>('cash');
+  const [amountReceivedInput, setAmountReceivedInput] = useState('');
+  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
+  const [discountInput, setDiscountInput] = useState('0');
+  const [discountPercentInput, setDiscountPercentInput] = useState('0');
+  const [note, setNote] = useState('');
+  return { cart, setCart, paymentMethod, setPaymentMethod, amountReceivedInput, setAmountReceivedInput, discountMode, setDiscountMode, discountInput, setDiscountInput, discountPercentInput, setDiscountPercentInput, note, setNote };
+}
+
+export function SaleScreen({ draft }: { draft: ReturnType<typeof useSaleDraft> }) {
+  const { cart, setCart, paymentMethod, setPaymentMethod, amountReceivedInput, setAmountReceivedInput, discountMode, setDiscountMode, discountInput, setDiscountInput, discountPercentInput, setDiscountPercentInput, note, setNote } = draft;
   const db = useDb();
   const platform = usePlatform();
+  const toast = useToast();
   const saleCompleted = useCloudSync().saleCompleted;
   const [wedge, toggleWedge] = useWedgeMode();
   const navigate = useNavigate();
@@ -52,14 +66,7 @@ export function SaleScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [category, setCategory] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
-  const [cart, setCart] = useState<CartLine[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online'>('cash');
-  const [amountReceivedInput, setAmountReceivedInput] = useState('');
-  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
-  const [discountInput, setDiscountInput] = useState('0');
-  const [discountPercentInput, setDiscountPercentInput] = useState('0');
-  const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState('');
@@ -158,7 +165,7 @@ export function SaleScreen() {
       setSearchQuery('');
       focusScan();
     },
-    [variants, focusScan],
+    [variants, focusScan, setCart],
   );
 
   // Totals for the current cart; shared by the summary display and completion.
@@ -220,6 +227,7 @@ export function SaleScreen() {
       const result = await saleRepo.completeSale(input, saleId, itemIds, movementIds, nowIso);
       setCartOpen(false);
       setCompletedResult(result);
+      toast.show('Sale completed');
       notifyStockChanged();
       // Debounced cloud sync trigger; a no-op when cloud is not connected.
       saleCompleted();
@@ -245,9 +253,11 @@ export function SaleScreen() {
     amountReceivedInput,
     note,
     db,
+    setAmountReceivedInput, setCart, setDiscountInput, setDiscountPercentInput, setNote,
     computeTotals,
     loadCatalog,
     saleCompleted,
+    toast,
   ]);
 
   // Keyboard shortcuts: F2 (focus scan), F9 (complete sale), Esc (clear cart)
@@ -274,7 +284,7 @@ export function SaleScreen() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, completedResult, cartOpen, focusScan, handleCompleteSale]);
+  }, [cart, completedResult, cartOpen, focusScan, handleCompleteSale, setCart]);
 
   useEffect(() => {
     focusScan();
@@ -345,7 +355,7 @@ export function SaleScreen() {
   useEffect(() => {
     setSaleAbandonHandler(() => setCart([]));
     return () => clearSaleAbandonHandler();
-  }, []);
+  }, [setCart]);
 
   // Offer: jump to the products catalog with the scanned barcode prefilled.
   function handleCreateFromScan() {
@@ -391,27 +401,34 @@ export function SaleScreen() {
   const cashShort =
     paymentMethod === 'cash' && amountReceivedInput !== '' && amountReceived < total;
 
-  if (loading) {
-    return <div className="p-6 text-gray-600">Loading checkout...</div>;
-  }
-
   const currency = shop?.currency_code ?? 'PKR';
+  const decimals = shop?.currency_decimals ?? 0;
 
   const itemCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const query = searchQuery.trim().toLowerCase();
   const categoryNames = new Map(categories.map((c) => [c.id, c.name]));
   const pickedQuantities = new Map(cart.map((line) => [line.variant_id, line.qty]));
-  const visibleVariants = variants.filter(
+  const [page, setPage] = useState(0);
+  const pageSize = 48;
+  const matches = React.useMemo(() => variants.filter(
     (v) =>
       (!category || v.category_id === category) &&
       [v.product_name, v.name, v.barcode, v.sku].some((field) =>
         field?.toLowerCase().includes(query),
       ),
-  );
+  ), [variants, query, category]);
+  const lastPage = Math.max(0, Math.ceil(matches.length / pageSize) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const visibleVariants = matches.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  useEffect(() => setPage(0), [query, category]);
+  if (loading) {
+    return <div className="vf-page text-sm text-slate-500">Loading checkout…</div>;
+  }
+
   const checkout = (
     <div className="checkout-body">
       <div>
-        <div className="flex justify-between items-center mb-4 border-b pb-3">
+        <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
           <h2 className="flex items-center gap-2 font-bold text-slate-900">
             <Icon name="shoppingCart" />
             Current Cart{' '}
@@ -422,7 +439,7 @@ export function SaleScreen() {
               onClick={() => {
                 if (window.confirm('Clear cart?')) setCart([]);
               }}
-              className="text-sm text-red-600 hover:text-red-800 font-medium px-3 py-1.5 rounded min-h-11 flex items-center"
+              className="flex min-h-11 items-center rounded-lg px-3 py-1.5 text-sm font-medium text-rose-600 hover:text-rose-800"
             >
               Clear (Esc)
             </button>
@@ -430,7 +447,7 @@ export function SaleScreen() {
         </div>
 
         {cart.length === 0 ? (
-          <div className="py-12 text-center text-gray-400">
+          <div className="py-12 text-center text-slate-400">
             <p className="text-base font-medium">Cart is empty</p>
             <p className="text-sm">Scan a barcode or tap a product to start a sale.</p>
           </div>
@@ -442,14 +459,14 @@ export function SaleScreen() {
               return (
                 <div
                   key={item.variant_id}
-                  className="p-3 bg-gray-50 border rounded-lg flex flex-col justify-between items-stretch gap-3"
+                  className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 truncate">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-semibold text-slate-900">
                       {item.product_name}{' '}
-                      <span className="text-gray-500 font-normal">({item.variant_name})</span>
+                      <span className="font-normal text-slate-500">({item.variant_name})</span>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-600 mt-1">
+                    <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
                       <div className="flex items-center gap-1">
                         <span>Price:</span>
                         <input
@@ -457,25 +474,30 @@ export function SaleScreen() {
                           min="0"
                           value={item.unit_price}
                           onChange={(e) => updatePrice(index, parseInt(e.target.value || '0', 10))}
-                          className="w-20 border rounded px-1.5 py-0.5 text-xs bg-white"
+                          className="vf-input w-24 px-1.5 py-0.5 text-xs"
                           title="Click to override price"
                         />
+                        {item.unit_price !== item.list_price && (
+                          <span className="vf-num text-[11px] text-slate-400 line-through">
+                            {formatMoney(item.list_price, decimals, currency)}
+                          </span>
+                        )}
                       </div>
                       <span>Stock: {item.on_hand}</span>
                       {isNegativeStock && (
                         <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-medium">
-                          Low stock warning (negative allowed)
+                          Below stock (negative allowed)
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 w-full justify-between">
+                  <div className="flex w-full items-center justify-between gap-3">
                     {/* Qty controls */}
-                    <div className="flex items-center border rounded bg-white">
+                    <div className="flex items-center rounded-lg border border-slate-200 bg-white">
                       <button
                         onClick={() => updateQty(index, item.qty - 1)}
-                        className="px-3 py-1.5 hover:bg-gray-100 text-gray-700 font-bold min-h-11 min-w-11 flex items-center justify-center"
+                        className="flex min-h-11 min-w-11 items-center justify-center px-3 py-1.5 font-bold text-slate-700 hover:bg-slate-100"
                         aria-label="Decrease quantity"
                       >
                         -
@@ -483,26 +505,27 @@ export function SaleScreen() {
                       <input
                         type="number"
                         min="1"
+                        aria-label={`Quantity for ${item.product_name} ${item.variant_name}`}
                         value={item.qty}
                         onChange={(e) => updateQty(index, parseInt(e.target.value || '1', 10))}
-                        className="w-12 text-center border-x py-1.5 text-sm focus:outline-none"
+                        className="vf-num w-12 border-x border-slate-200 py-1.5 text-center text-sm focus:outline-none"
                       />
                       <button
                         onClick={() => updateQty(index, item.qty + 1)}
-                        className="px-3 py-1.5 hover:bg-gray-100 text-gray-700 font-bold min-h-11 min-w-11 flex items-center justify-center"
+                        className="flex min-h-11 min-w-11 items-center justify-center px-3 py-1.5 font-bold text-slate-700 hover:bg-slate-100"
                         aria-label="Increase quantity"
                       >
                         +
                       </button>
                     </div>
 
-                    <div className="font-bold text-gray-900 flex-1 text-right">
-                      {formatMoney(lineTotal, 0, currency)}
+                    <div className="vf-num flex-1 text-right font-bold text-slate-900">
+                      {formatMoney(lineTotal, decimals, currency)}
                     </div>
 
                     <button
                       onClick={() => removeItem(index)}
-                      className="text-red-500 hover:text-red-700 p-2 min-h-11 min-w-11 flex items-center justify-center font-bold"
+                      className="flex min-h-11 min-w-11 items-center justify-center p-2 font-bold text-rose-500 hover:text-rose-700"
                       title="Remove line"
                     >
                       ✕
@@ -516,27 +539,27 @@ export function SaleScreen() {
       </div>
 
       {/* Cart Summary & Checkout Actions */}
-      <div className="border-t pt-4 space-y-4">
+      <div className="space-y-4 border-t border-slate-200 pt-4">
         <div className="space-y-1.5 text-sm">
-          <div className="flex justify-between text-gray-600">
+          <div className="flex justify-between text-slate-600">
             <span>Subtotal</span>
-            <span>{formatMoney(subtotal, 0, currency)}</span>
+            <span className="vf-num">{formatMoney(subtotal, decimals, currency)}</span>
           </div>
-          <div className="flex justify-between items-center text-gray-600 gap-2">
+          <div className="flex items-center justify-between gap-2 text-slate-600">
             {discountMode === 'amount' ? (
               <span>Discount ({currency})</span>
             ) : (
               <span>Discount (%)</span>
             )}
             <div className="flex items-center gap-2">
-              <div className="flex border rounded overflow-hidden">
+              <div className="flex overflow-hidden rounded-lg border border-slate-200">
                 <button
                   type="button"
                   onClick={() => setDiscountMode('amount')}
-                  className={`px-3 py-1 text-xs font-medium min-h-11 ${
+                  className={`min-h-11 px-3 py-1 text-xs font-medium ${
                     discountMode === 'amount'
-                      ? 'bg-emerald-700 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                   aria-pressed={discountMode === 'amount'}
                 >
@@ -545,10 +568,10 @@ export function SaleScreen() {
                 <button
                   type="button"
                   onClick={() => setDiscountMode('percent')}
-                  className={`px-3 py-1 text-xs font-medium min-h-11 ${
+                  className={`min-h-11 px-3 py-1 text-xs font-medium ${
                     discountMode === 'percent'
-                      ? 'bg-emerald-700 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                   aria-pressed={discountMode === 'percent'}
                 >
@@ -561,7 +584,7 @@ export function SaleScreen() {
                   min="0"
                   value={discountInput}
                   onChange={(e) => setDiscountInput(e.target.value)}
-                  className="w-28 border rounded px-2 py-1 text-right text-sm"
+                  className="vf-input vf-num w-28 py-1 text-right"
                   aria-label="Discount amount"
                 />
               ) : (
@@ -571,20 +594,20 @@ export function SaleScreen() {
                   max="100"
                   value={discountPercentInput}
                   onChange={(e) => setDiscountPercentInput(e.target.value)}
-                  className="w-28 border rounded px-2 py-1 text-right text-sm"
+                  className="vf-input vf-num w-28 py-1 text-right"
                   aria-label="Discount percent"
                 />
               )}
             </div>
           </div>
           {discountExceedsSubtotal && (
-            <div role="alert" className="text-xs text-red-600">
+            <div role="alert" className="text-xs text-rose-600">
               Discount cannot exceed the subtotal.
             </div>
           )}
-          <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t">
+          <div className="flex justify-between border-t border-slate-200 pt-2 text-lg font-bold text-slate-900">
             <span>Total</span>
-            <span>{formatMoney(total, 0, currency)}</span>
+            <span className="vf-num">{formatMoney(total, decimals, currency)}</span>
           </div>
         </div>
 
@@ -593,10 +616,10 @@ export function SaleScreen() {
           <button
             type="button"
             onClick={() => setPaymentMethod('cash')}
-            className={`py-3 rounded-lg font-medium border text-center min-h-11 transition-colors ${
+            className={`min-h-11 rounded-xl border py-3 text-center text-sm font-semibold transition-colors ${
               paymentMethod === 'cash'
-                ? 'bg-emerald-700 text-white border-emerald-700'
-                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                ? 'border-emerald-600 bg-emerald-600 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             Cash Payment
@@ -604,10 +627,10 @@ export function SaleScreen() {
           <button
             type="button"
             onClick={() => setPaymentMethod('online')}
-            className={`py-3 rounded-lg font-medium border text-center min-h-11 transition-colors ${
+            className={`min-h-11 rounded-xl border py-3 text-center text-sm font-semibold transition-colors ${
               paymentMethod === 'online'
-                ? 'bg-emerald-700 text-white border-emerald-700'
-                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                ? 'border-emerald-600 bg-emerald-600 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             Online / Card
@@ -615,9 +638,9 @@ export function SaleScreen() {
         </div>
 
         {paymentMethod === 'cash' && (
-          <div className="grid grid-cols-2 gap-4 items-center bg-gray-50 p-3 rounded-lg border">
+          <div className="grid grid-cols-2 items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
+              <label className="vf-label">
                 Cash Received ({currency})
               </label>
               <input
@@ -626,13 +649,13 @@ export function SaleScreen() {
                 value={amountReceivedInput}
                 onChange={(e) => setAmountReceivedInput(e.target.value)}
                 placeholder={total.toString()}
-                className="w-full border rounded px-3 py-2 text-sm bg-white"
+                className="vf-input vf-num"
               />
             </div>
             <div className="text-right">
-              <span className="block text-xs font-medium text-gray-600">Change Due</span>
-              <span className="text-xl font-bold text-green-700">
-                {formatMoney(changeDue, 0, currency)}
+              <span className="vf-label">Change Due</span>
+              <span className="vf-num text-xl font-bold text-emerald-700">
+                {formatMoney(changeDue, decimals, currency)}
               </span>
             </div>
           </div>
@@ -641,7 +664,7 @@ export function SaleScreen() {
         {cashShort && (
           <div
             role="alert"
-            className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded text-sm"
+            className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
           >
             Cash received is less than the total. The sale can still complete, but the customer
             still owes the difference.
@@ -654,18 +677,18 @@ export function SaleScreen() {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Optional sale note or customer reference..."
-            className="w-full border rounded px-3 py-2 text-sm"
+            className="vf-input"
           />
         </div>
 
         <button
           disabled={completing || cart.length === 0 || discountExceedsSubtotal}
           onClick={() => void handleCompleteSale()}
-          className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:bg-gray-300 text-white font-bold py-4 rounded-xl text-lg shadow transition-colors min-h-12 flex items-center justify-center gap-2"
+          className="vf-btn-primary min-h-12 w-full text-base font-bold"
         >
           {completing
-            ? 'Completing Sale...'
-            : `Complete Sale (F9) — ${formatMoney(total, 0, currency)}`}
+            ? 'Completing Sale…'
+            : `Complete Sale (F9) — ${formatMoney(total, decimals, currency)}`}
         </button>
       </div>
     </div>
@@ -720,7 +743,7 @@ export function SaleScreen() {
               {platform.platform === 'desktop' && (
                 <button
                   type="submit"
-                  className="bg-gray-900 hover:bg-gray-800 text-white px-5 py-3 rounded-lg font-medium min-h-11"
+                  className="vf-btn-dark min-h-11 px-5 py-3"
                 >
                   Find
                 </button>
@@ -754,13 +777,13 @@ export function SaleScreen() {
         {error && (
           <div
             role="alert"
-            className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm flex items-center gap-2 flex-wrap"
+            className="flex flex-wrap items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700"
           >
             <span>{error}</span>
             {notFoundQuery && (
               <button
                 onClick={handleCreateFromScan}
-                className="bg-red-700 hover:bg-red-800 text-white px-3 py-1.5 rounded font-medium min-h-11"
+                className="min-h-11 rounded-lg bg-rose-700 px-3 py-1.5 font-medium text-white hover:bg-rose-800"
               >
                 Create product with this barcode
               </button>
@@ -794,7 +817,7 @@ export function SaleScreen() {
                   {v.product_name} · {v.name}
                 </strong>
                 <span className="pick-price">
-                  {formatMoney(v.sale_price, 0, currency)}
+                  {formatMoney(v.sale_price, decimals, currency)}
                   <small>{v.barcode?.slice(-4)}</small>
                 </span>
               </button>
@@ -806,6 +829,11 @@ export function SaleScreen() {
             </p>
           )}
         </div>
+        {lastPage > 0 && <nav aria-label="Catalog pages" className="flex items-center justify-center gap-4">
+          <button className="vf-btn-ghost" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</button>
+          <span>Page {currentPage + 1} of {lastPage + 1}</span>
+          <button className="vf-btn-ghost" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Next</button>
+        </nav>}
       </section>
       <aside className="desktop-checkout">{checkout}</aside>
       <button className="cart-dock" data-filled={itemCount > 0} onClick={() => setCartOpen(true)}>
@@ -818,7 +846,7 @@ export function SaleScreen() {
               : 'Scan or tap items above'}
           </small>
         </span>
-        <b>{formatMoney(total, 0, currency)}</b>
+        <b>{formatMoney(total, decimals, currency)}</b>
       </button>
       {cartOpen && (
         <Sheet title="Checkout" onClose={() => setCartOpen(false)}>

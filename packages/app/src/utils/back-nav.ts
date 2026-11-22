@@ -1,5 +1,5 @@
 /**
- * Android back-button coordination (Phase 9).
+ * Android back-button coordination.
  *
  * Screens register LIFO handlers while a dialog/modal is open; the Shell's
  * native `backButton` listener drains the stack top-down. A handler returns

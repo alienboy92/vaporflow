@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
-import { StockRepo, ShopRepo, ProductRepo, DeviceRepo } from '@vaporflow/core';
+import { StockRepo, ShopRepo, ProductRepo, DeviceRepo, formatMoney } from '@vaporflow/core';
 import type { Shop, StockMovement } from '@vaporflow/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
@@ -15,11 +15,19 @@ interface InventoryItem {
   variant_name: string;
   sku: string | null;
   barcode: string | null;
+  category_name: string;
   cost_price: number;
   sale_price: number;
   track_stock: number;
   on_hand: number;
   threshold: number;
+}
+
+interface InventoryCounts {
+  all: number;
+  low: number;
+  out: number;
+  negative: number;
 }
 
 export function StockScreen() {
@@ -28,6 +36,7 @@ export function StockScreen() {
   const savingRef = useRef(false);
   const [shop, setShop] = useState<Shop | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [counts, setCounts] = useState<InventoryCounts>({ all: 0, low: 0, out: 0, negative: 0 });
   const [filter, setFilter] = useState<'all' | 'low' | 'out' | 'negative'>('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -68,6 +77,7 @@ export function StockScreen() {
 
       const items = await stockRepo.getInventoryList(activeShop.id, filter, search);
       setInventory(items);
+      setCounts(await stockRepo.getInventoryCounts(activeShop.id));
 
       const allVars = await productRepo.getVariants(activeShop.id);
       const allProds = await productRepo.getProducts(activeShop.id);
@@ -126,9 +136,9 @@ export function StockScreen() {
       {
         variantId: selected?.variant_id ?? '',
         variantLabel: selected?.label ?? '',
-        qty: '10',
+        qty: '',
         unitCost: '',
-        note: 'Restock shipment',
+        note: '',
       },
     ]);
     setError('');
@@ -144,9 +154,9 @@ export function StockScreen() {
       {
         variantId: first.variant_id,
         variantLabel: first.label,
-        qty: '10',
+        qty: '',
         unitCost: '',
-        note: 'Restock shipment',
+        note: '',
       },
     ]);
   }
@@ -264,152 +274,179 @@ export function StockScreen() {
 
   if (loading) {
     return (
-      <div className="p-8 text-gray-600" role="status">
-        Loading inventory...
+      <div className="vf-page text-sm text-slate-500" role="status">
+        Loading inventory…
       </div>
     );
   }
 
+  const currency = shop?.currency_code ?? 'PKR';
+  const decimals = shop?.currency_decimals ?? 0;
+
+  const filterChips: { id: typeof filter; label: string; count: number }[] = [
+    { id: 'all', label: 'All Variants', count: counts.all },
+    { id: 'low', label: 'Low Stock', count: counts.low },
+    { id: 'out', label: 'Out of Stock', count: counts.out },
+    { id: 'negative', label: 'Negative', count: counts.negative },
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Stock & Inventory</h1>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => handleOpenStockIn()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2.5 rounded-lg min-h-11 shadow"
-          >
-            + Stock In
-          </button>
-        </div>
+    <div className="vf-page">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="vf-sub max-w-xl">
+          On-hand quantities, purchase prices and the stock ledger for every variant.
+        </p>
+        <button onClick={() => handleOpenStockIn()} className="vf-btn-primary">
+          + Stock In
+        </button>
       </div>
 
       {error && (
-        <div role="alert" className="p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
           {error}
         </div>
       )}
       {success && (
-        <div role="status" className="p-4 bg-green-50 text-green-700 rounded-lg border border-green-200">
+        <div
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+        >
           {success}
         </div>
       )}
 
-      {/* Filter Tabs and Search */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row gap-4 justify-between items-center">
-        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-          {(['all', 'low', 'out', 'negative'] as const).map((tab) => (
+      {/* Filter chips and search */}
+      <div className="vf-card flex flex-col justify-between gap-3 p-4 md:flex-row md:items-center">
+        <div className="flex flex-wrap items-center gap-2">
+          {filterChips.map((chip) => (
             <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              className={`px-4 py-2 rounded-lg font-medium text-sm min-h-11 capitalize transition-colors ${
-                filter === tab
-                  ? 'bg-emerald-700 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              key={chip.id}
+              type="button"
+              aria-pressed={filter === chip.id}
+              onClick={() => setFilter(chip.id)}
+              className="vf-chip min-h-10"
             >
-              {tab === 'low' ? 'Low Stock' : tab === 'out' ? 'Out of Stock' : tab}
+              <span>{chip.label}</span>
+              <span className="vf-num rounded-full bg-white px-1.5 py-0.5 text-[11px] text-slate-700">
+                {chip.count}
+              </span>
             </button>
           ))}
         </div>
         <input
           type="text"
-          placeholder="Search inventory..."
+          placeholder="Filter stock items…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full md:w-80 px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
+          className="vf-input w-full md:w-72"
+          aria-label="Filter stock items"
         />
       </div>
 
-      {/* Inventory Table */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+      {/* Inventory table */}
+      <div className="vf-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="record-list w-full text-left border-collapse">
+          <table className="record-list vf-table">
             <thead>
-              <tr className="bg-gray-100 border-b text-gray-700 text-sm">
-                <th className="p-4 font-semibold">Product / Variant</th>
-                <th className="p-4 font-semibold">SKU / Barcode</th>
-                <th className="p-4 font-semibold">Price</th>
-                <th className="p-4 font-semibold">On Hand</th>
-                <th className="p-4 font-semibold">Status / Threshold</th>
-                <th className="p-4 font-semibold text-right">Actions</th>
+              <tr>
+                <th>Item / Variant</th>
+                <th>SKU / Barcode</th>
+                <th className="text-right">Purchase</th>
+                <th className="text-right">Sale Price</th>
+                <th className="text-right">On Hand</th>
+                <th className="text-center">Status</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 text-sm">
+            <tbody>
               {inventory.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     No inventory items match the current filter.
                   </td>
                 </tr>
               ) : (
                 inventory.map((item) => {
                   const isOut = item.on_hand <= 0;
-                  const isLow = item.on_hand <= item.threshold;
+                  const isLow = item.on_hand > 0 && item.on_hand <= item.threshold;
                   const isNegative = item.on_hand < 0;
 
                   return (
-                    <tr key={item.variant_id} className="hover:bg-gray-50">
-                      <td data-label="Product / Variant" className="p-4">
-                        <div className="font-semibold text-gray-900">{item.product_name}</div>
-                        <div className="text-xs text-gray-600">{item.variant_name}</div>
+                    <tr key={item.variant_id}>
+                      <td data-label="Item / Variant">
+                        <div className="font-semibold text-slate-900">
+                          {item.variant_name === 'Default'
+                            ? item.product_name
+                            : `${item.product_name} — ${item.variant_name}`}
+                        </div>
+                        <div className="text-xs text-slate-500">{item.category_name}</div>
                       </td>
-                      <td data-label="SKU / Barcode" className="p-4 text-gray-600">
+                      <td data-label="SKU / Barcode" className="text-xs text-slate-600">
                         <div>{item.sku || '—'}</div>
-                        <div className="text-xs font-mono text-gray-400">{item.barcode || '—'}</div>
+                        <div className="vf-num text-[11px] text-slate-400">
+                          {item.barcode || '—'}
+                        </div>
                       </td>
-                      <td data-label="Price" className="p-4 font-medium text-gray-800">PKR {item.sale_price}</td>
-                      <td data-label="On Hand" className="p-4">
-                        <span
-                          className={`text-base font-bold ${
-                            isNegative
-                              ? 'text-purple-600'
-                              : isOut
-                              ? 'text-red-600'
-                              : isLow
-                              ? 'text-amber-600'
-                              : 'text-green-600'
-                          }`}
-                        >
-                          {item.on_hand}
-                        </span>
+                      <td
+                        data-label="Purchase"
+                        className="vf-num whitespace-nowrap text-right text-slate-700"
+                      >
+                        {formatMoney(item.cost_price, decimals, currency)}
                       </td>
-                      <td data-label="Status / Threshold" className="p-4">
+                      <td
+                        data-label="Sale Price"
+                        className="vf-num whitespace-nowrap text-right font-semibold text-slate-900"
+                      >
+                        {formatMoney(item.sale_price, decimals, currency)}
+                      </td>
+                      <td
+                        data-label="On Hand"
+                        className={`vf-num text-right text-base font-bold ${
+                          isOut ? 'text-rose-600' : isLow ? 'text-amber-600' : 'text-slate-900'
+                        }`}
+                      >
+                        {item.on_hand}
+                      </td>
+                      <td data-label="Status" className="text-center">
                         {isNegative ? (
-                          <span className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full text-xs font-semibold">
-                            Negative
+                          <span className="vf-badge-rose bg-purple-50 text-purple-800">
+                            Negative ({item.on_hand})
                           </span>
                         ) : isOut ? (
-                          <span className="bg-red-50 text-red-700 px-2.5 py-1 rounded-full text-xs font-semibold">
-                            Out of Stock
-                          </span>
+                          <span className="vf-badge-rose">Out of Stock</span>
                         ) : isLow ? (
-                          <span className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full text-xs font-semibold">
-                            Low (≤ {item.threshold})
-                          </span>
+                          <span className="vf-badge-amber">Low (≤ {item.threshold})</span>
                         ) : (
-                          <span className="bg-green-50 text-green-700 px-2.5 py-1 rounded-full text-xs font-semibold">
-                            Normal
-                          </span>
+                          <span className="vf-badge-green">Healthy</span>
                         )}
                       </td>
-                      <td data-label="Actions" className="p-4 text-right space-x-2">
-                        <button className="min-h-11 px-3 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-semibold"
-                          onClick={() => handleOpenStockIn(item.variant_id)}>Stock In</button>
-                        <button
-                          onClick={() => handleOpenAdjust(item)}
-                          className="px-3 py-1.5 border rounded text-emerald-600 hover:bg-emerald-50 min-h-11 font-medium"
-                        >
-                          Adjust
-                        </button>
-                        <button
-                          onClick={() => void handleOpenHistory(item)}
-                          className="px-3 py-1.5 border rounded text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
-                        >
-                          History
-                        </button>
+                      <td data-label="Actions" className="text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            className="vf-btn-ghost min-h-9 px-3 text-xs text-emerald-800"
+                            onClick={() => handleOpenStockIn(item.variant_id)}
+                          >
+                            + Stock In
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAdjust(item)}
+                            className="vf-btn-ghost min-h-9 px-3 text-xs"
+                          >
+                            Adjust
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleOpenHistory(item)}
+                            className="vf-btn-ghost min-h-9 px-2.5 text-xs"
+                          >
+                            History
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -422,38 +459,44 @@ export function StockScreen() {
 
       {/* Stock In Modal */}
       {stockInOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-3xl w-full space-y-6 shadow-2xl my-8">
-            <div className="flex justify-between items-center border-b pb-4">
-              <h2 className="text-2xl font-bold text-gray-900">Stock In (Restock)</h2>
+        <div className="vf-modal overflow-y-auto">
+          <div className="vf-modal-card max-w-3xl space-y-6 p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <h2 className="text-xl font-bold text-slate-900">Stock In (Restock)</h2>
               <button
                 onClick={() => setStockInOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+                className="icon-button text-xl font-bold"
+                aria-label="Close stock in"
               >
                 ✕
               </button>
             </div>
 
             <form onSubmit={handleSaveStockIn} className="space-y-4">
-              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+              <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-2">
                 {stockInItems.map((si, index) => (
-                  <div key={index} className="p-4 bg-gray-50 border rounded-xl space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-semibold text-gray-600">Item #{index + 1}</span>
+                  <div
+                    key={index}
+                    className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-600">
+                        Item #{index + 1}
+                      </span>
                       {stockInItems.length > 1 && (
                         <button
                           type="button"
                           onClick={() =>
                             setStockInItems((prev) => prev.filter((_, i) => i !== index))
                           }
-                          className="text-red-600 hover:text-red-800 text-xs font-medium"
+                          className="text-xs font-semibold text-rose-600 hover:text-rose-800"
                         >
                           Remove
                         </button>
                       )}
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Variant</label>
+                      <label className="vf-label">Variant</label>
                       <div className="flex gap-2">
                         <select
                           value={si.variantId}
@@ -463,7 +506,7 @@ export function StockScreen() {
                               prev.map((item, i) => (i === index ? { ...item, variantId: vId } : item)),
                             );
                           }}
-                          className="flex-1 px-3 py-2 border rounded-lg min-h-11 bg-white text-sm min-w-0"
+                          className="vf-select min-w-0 flex-1"
                         >
                           {allVariants.map((v) => (
                             <option key={v.variant_id} value={v.variant_id}>
@@ -477,9 +520,9 @@ export function StockScreen() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                        <label className="vf-label">Quantity</label>
                         <input
                           type="number"
                           min="1"
@@ -491,13 +534,11 @@ export function StockScreen() {
                               prev.map((item, i) => (i === index ? { ...item, qty: val } : item)),
                             );
                           }}
-                          className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                          className="vf-input"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                          New Purchase Price (Optional)
-                        </label>
+                        <label className="vf-label">New Purchase Price (Optional)</label>
                         <input
                           type="number"
                           min="0"
@@ -509,11 +550,11 @@ export function StockScreen() {
                               prev.map((item, i) => (i === index ? { ...item, unitCost: val } : item)),
                             );
                           }}
-                          className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                          className="vf-input"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Note</label>
+                        <label className="vf-label">Note</label>
                         <input
                           type="text"
                           value={si.note}
@@ -523,7 +564,7 @@ export function StockScreen() {
                               prev.map((item, i) => (i === index ? { ...item, note: val } : item)),
                             );
                           }}
-                          className="w-full px-3 py-2 border rounded-lg min-h-11 bg-white text-sm"
+                          className="vf-input"
                           placeholder="Supplier / delivery note"
                         />
                       </div>
@@ -535,23 +576,20 @@ export function StockScreen() {
               <button
                 type="button"
                 onClick={handleAddStockInRow}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium min-h-11 w-full"
+                className="vf-btn-ghost w-full"
               >
                 + Add Another Item
               </button>
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
+              <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
                 <button
                   type="button"
                   onClick={() => setStockInOpen(false)}
-                  className="px-5 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                  className="vf-btn-ghost"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg min-h-11 font-medium shadow"
-                >
+                <button type="submit" className="vf-btn-primary">
                   Complete Stock In
                 </button>
               </div>
@@ -562,34 +600,49 @@ export function StockScreen() {
 
       {/* Stock Adjustment Modal */}
       {adjustOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
-            <h3 className="text-xl font-bold text-gray-900">Stock Adjustment (Recount)</h3>
-            <p className="text-sm text-gray-600">
-              Current on hand: <strong className="text-gray-900">{selectedVariantOnHand}</strong>
+        <div className="vf-modal">
+          <div className="vf-modal-card max-w-md space-y-4 p-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-slate-900">Stock Adjustment (Recount)</h3>
+              <button
+                onClick={() => setAdjustOpen(false)}
+                className="icon-button text-xl font-bold"
+                aria-label="Close stock adjustment"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">
+              Current on hand: <strong className="text-slate-900">{selectedVariantOnHand}</strong>
             </p>
 
             <form onSubmit={handleSaveAdjustment} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Counted Quantity *</label>
+                <label className="vf-label" htmlFor="adjust-counted">
+                  Counted Quantity *
+                </label>
                 <input
+                  id="adjust-counted"
                   type="number"
                   min="0"
                   required
                   value={adjustCountedQty}
                   onChange={(e) => setAdjustCountedQty(e.target.value)}
-                  className="w-full px-4 py-2.5 border rounded-lg min-h-11 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  className="vf-input"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reason / Note (Required) *</label>
+                <label className="vf-label" htmlFor="adjust-note">
+                  Reason / Note (Required) *
+                </label>
                 <textarea
+                  id="adjust-note"
                   required
                   rows={3}
                   value={adjustNote}
                   onChange={(e) => setAdjustNote(e.target.value)}
                   placeholder="e.g. Broken items found during monthly recount"
-                  className="w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  className="vf-textarea"
                 />
               </div>
 
@@ -597,14 +650,11 @@ export function StockScreen() {
                 <button
                   type="button"
                   onClick={() => setAdjustOpen(false)}
-                  className="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-100 min-h-11 font-medium"
+                  className="vf-btn-ghost"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg min-h-11 font-medium"
-                >
+                <button type="submit" className="vf-btn-primary">
                   Save Adjustment
                 </button>
               </div>
@@ -615,16 +665,17 @@ export function StockScreen() {
 
       {/* Stock History Modal */}
       {historyOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-3xl w-full space-y-4 shadow-2xl my-8 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-4">
+        <div className="vf-modal overflow-y-auto">
+          <div className="vf-modal-card max-h-[80vh] max-w-3xl space-y-4 overflow-y-auto p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">Stock History</h3>
-                <p className="text-sm text-gray-600">{historyVariantName}</p>
+                <h3 className="text-xl font-bold text-slate-900">Stock History</h3>
+                <p className="text-sm text-slate-600">{historyVariantName}</p>
               </div>
               <button
                 onClick={() => setHistoryOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold px-3 py-1 min-h-11"
+                className="icon-button text-xl font-bold"
+                aria-label="Close stock history"
               >
                 ✕
               </button>
@@ -632,37 +683,37 @@ export function StockScreen() {
 
             <div className="space-y-3">
               {historyMovements.length === 0 ? (
-                <p className="text-gray-500 text-center py-6">No movement history found.</p>
+                <p className="py-6 text-center text-slate-500">No movement history found.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm border-collapse">
+                  <table className="vf-table">
                     <thead>
-                      <tr className="bg-gray-100 border-b text-gray-700">
-                        <th className="p-3">Type</th>
-                        <th className="p-3">Change</th>
-                        <th className="p-3">Unit Cost</th>
-                        <th className="p-3">Note</th>
-                        <th className="p-3">Occurred At</th>
+                      <tr>
+                        <th>Type</th>
+                        <th>Change</th>
+                        <th>Unit Cost</th>
+                        <th>Note</th>
+                        <th>Occurred At</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody>
                       {historyMovements.map((m) => (
-                        <tr key={m.id} className="hover:bg-gray-50">
-                          <td className="p-3 font-semibold capitalize text-gray-800">{m.type}</td>
-                          <td className="p-3">
+                        <tr key={m.id}>
+                          <td className="font-semibold capitalize text-slate-800">{m.type}</td>
+                          <td>
                             <span
-                              className={`font-bold ${
-                                m.qty_change > 0 ? 'text-green-600' : 'text-red-600'
+                              className={`vf-num font-bold ${
+                                m.qty_change > 0 ? 'text-emerald-600' : 'text-rose-600'
                               }`}
                             >
                               {m.qty_change > 0 ? `+${m.qty_change}` : m.qty_change}
                             </span>
                           </td>
-                          <td className="p-3 text-gray-600">
-                            {m.unit_cost !== null ? `PKR ${m.unit_cost}` : '—'}
+                          <td className="vf-num text-slate-600">
+                            {m.unit_cost !== null ? formatMoney(m.unit_cost, decimals, currency) : '—'}
                           </td>
-                          <td className="p-3 text-gray-600">{m.note || '—'}</td>
-                          <td className="p-3 text-xs text-gray-500">
+                          <td className="text-slate-600">{m.note || '—'}</td>
+                          <td className="text-xs text-slate-500">
                             {new Date(m.occurred_at).toLocaleString()}
                           </td>
                         </tr>

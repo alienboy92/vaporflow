@@ -3,10 +3,10 @@ import {
   BatchSchema,
   StatementSchema,
   RowsSchema,
-  DbCheckResultSchema,
   type DesktopBridge,
   type PlatformAdapters,
 } from '@vaporflow/core';
+import { browserPrinter } from '../utils/printer';
 
 declare global {
   interface Window {
@@ -15,8 +15,8 @@ declare global {
 }
 const PlatformContext = createContext<PlatformAdapters | null>(null);
 let startup: Promise<PlatformAdapters> | undefined;
-const unsupported = (feature: string): Promise<never> =>
-  Promise.reject(new Error(`${feature} is not implemented in Phase 2`));
+const unavailable = (feature: string): Promise<never> =>
+  Promise.reject(new Error(`${feature} is not available on this device.`));
 
 /** Desktop file share: save the payload through a blob download. */
 async function shareFileDesktop(name: string, data: Uint8Array | string, mime: string): Promise<void> {
@@ -34,7 +34,7 @@ async function shareFileDesktop(name: string, data: Uint8Array | string, mime: s
 }
 
 async function initialize(): Promise<PlatformAdapters> {
-  let database: Pick<PlatformAdapters, 'db' | 'diagnostics' | 'platform' | 'share' | 'scanner'>;
+  let database: Pick<PlatformAdapters, 'db' | 'platform' | 'share' | 'scanner' | 'printer'>;
   if (window.vaporflow?.platform === 'desktop') {
     const api = window.vaporflow;
     database = {
@@ -51,24 +51,16 @@ async function initialize(): Promise<PlatformAdapters> {
         shareFile: (name, data, mime) => shareFileDesktop(name, data, mime),
       },
       scanner: {
-        scanWithCamera: () => unsupported('Camera scanning'),
+        scanWithCamera: () => unavailable('Camera scanning'),
       },
-      diagnostics: api.diagnostics
-        ? {
-            read: async () => DbCheckResultSchema.parse(await api.diagnostics!.read()),
-            createFixture: async () =>
-              DbCheckResultSchema.parse(await api.diagnostics!.createFixture()),
-          }
-        : undefined,
+      printer: browserPrinter,
     };
     await database.db.migrate();
   } else {
     const { createMobileDatabase } = await import('@vaporflow/mobile');
     database = {
       platform: 'android',
-      ...(await createMobileDatabase(
-        import.meta.env.DEV || import.meta.env.MODE === 'diagnostics',
-      )),
+      ...(await createMobileDatabase()),
     };
   }
   return {
@@ -85,22 +77,15 @@ async function initialize(): Promise<PlatformAdapters> {
         };
       },
     },
-    printer: {
-      printReceipt: () => unsupported('Receipt printing'),
-      printLabels: () => unsupported('Label printing'),
-    },
     share:
       database.share ?? {
-        shareFile: () => unsupported('File sharing'),
+        shareFile: () => unavailable('File sharing'),
       },
-    file: {
-      exportBackup: () => unsupported('Backup export'),
-      importBackup: () => unsupported('Backup import'),
-    },
     scanner:
       database.scanner ?? {
-        scanWithCamera: () => unsupported('Camera scanning'),
+        scanWithCamera: () => unavailable('Camera scanning'),
       },
+    printer: database.printer ?? browserPrinter,
   };
 }
 export function DbProvider({ children }: { children: ReactNode }) {

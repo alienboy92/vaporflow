@@ -5,6 +5,7 @@ import { CloudSyncProvider } from './context/CloudSyncProvider';
 import { ShopRepo } from '@vaporflow/core';
 import { SetupWizard } from './screens/SetupWizard';
 import { Shell } from './components/Shell';
+import { ToastProvider } from './components/Toast';
 import { globalErrorLogger } from './utils/logger';
 
 function AppRoot() {
@@ -34,8 +35,8 @@ function AppRoot() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center p-6" role="status">
-        <p className="text-gray-600 font-medium">VaporFlow — Checking shop configuration...</p>
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6" role="status">
+        <p className="font-medium text-slate-600">VaporFlow — Checking shop configuration…</p>
       </main>
     );
   }
@@ -65,7 +66,9 @@ export function App() {
   return (
     <DbProvider>
       <CloudSyncProvider>
-        <AppRoot />
+        <ToastProvider>
+          <AppRoot />
+        </ToastProvider>
       </CloudSyncProvider>
     </DbProvider>
   );
