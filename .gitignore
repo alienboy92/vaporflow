@@ -9,7 +9,11 @@ apps/desktop/dist
 apps/desktop/out
 
 # Capacitor / Android
-apps/mobile/android
+# Native projects are tracked so a clone can build the app; only local build
+# output, machine-specific config and signing material are ignored.
+**/android/build/
+**/android/.gradle/
+**/android/local.properties
 apps/mobile/dist
 apps/mobile/dist-ts
 apps/desktop/dist-electron
