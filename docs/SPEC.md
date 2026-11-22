@@ -113,7 +113,8 @@ Indexes and views: unique barcode per shop among non-deleted variants (partial u
 2. Sales are immutable. Mistakes are corrected with a return, not by editing or deleting.
 3. Cost snapshot: sale_items.unit_cost = variant.cost_price at the time of sale. Later cost changes never alter past profit. In the UI, cost_price is labelled 'Purchase price' and sale_price 'Selling price'; both are mandatory when a variant is created, because daily sales and the P&L depend on them.
 4. Discount is entered at sale level as an amount or a percent (percent is converted to an amount). It is allocated across lines in proportion to line gross, with the rounding remainder on the last line, and stored per line as net_total. A line's unit_price may be overridden; list_price keeps the original.
-5. Returns: pick sale lines and quantities (cannot exceed sold minus already returned). refund_amount per line = round(net_total x qty_returned / qty_sold). Choose Restock (adds a 'return' movement) or Do not restock (damaged goods). Refund method is cash or online.
+5. Returns: the local device permits at most the sold quantity less previous returns. For a sale line with cumulative returned quantity r, entitlement(r) = round(lineNetTotal × r / soldQty), to the nearest integer with exact halves toward positive infinity. Pay the cumulative entitlement less the amount actually refunded on previous returns of that line. Clamp the result to zero if it would reverse the sign of the original line. For two units with a line net total of 1 rupee, successive one-unit returns pay 1 and 0 rupees, for a total of 1. Ledger entries are immutable, including historical overpayments. Choose cash or online for the refund and whether to restock. Each restocked return adds a stock movement.
+   If disconnected devices return the same line, both refunds and any restock movements remain in the ledger after sync. Sales displays a reconciliation warning identifying the receipt, item, sold quantity and returned quantity. The owner reconciles the discrepancy operationally.
 6. Restock: movement type 'restock'. An optional new cost price updates variant.cost_price (last cost; no averaging in v1).
 7. Adjustment: the user enters the counted quantity; the app writes the difference with a required note.
 8. Low stock: on_hand <= (variant threshold, or the shop default). Out of stock: on_hand <= 0.
@@ -186,3 +187,5 @@ Indexes and views: unique barcode per shop among non-deleted variants (partial u
 ## 13. Later versions
 
 Customer credit, suppliers and purchase orders, multi-user roles, FBR integration, thermal printer (ESC/POS) with silent printing, multi-shop and web dashboard, product images, weighted-average cost.
+
+22 November 2026 · Section 8.5 clarified cumulative refund rounding and offline over-return reconciliation.

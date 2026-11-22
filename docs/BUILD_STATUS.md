@@ -82,3 +82,5 @@ Verified: `pnpm lint`, `pnpm typecheck`, `pnpm test` (166 passed / 8 skipped), `
 Verified: `pnpm lint`, `pnpm typecheck`, `pnpm test` → 169 passed, 8 skipped, 0 failed.
 
 18 November retest — 167 automated tests passed and 8 opt-in checks were skipped in the default run. Three dedicated hosted auth/sync tests passed separately. On the connected SM-A055F, 20 generated barcode fixtures and a repeated-barcode test passed via Android keyboard events. The phone layout audit found a narrow camera button. Repairs and outstanding physical acceptance checks are recorded in the [Phase 8B review](PHASE8B_REVIEW.md) and [Phase 9 review](PHASE9_REVIEW.md).
+
+22 November 2026 · RC1 baseline tagged locally as v1.0.0-rc1 at 2a9b3e5. Clean-clone verification pending.
