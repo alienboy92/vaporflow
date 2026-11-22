@@ -1,6 +1,6 @@
 # Phases 4–7 repair and Phase 8A handoff
 
-16 November 2026. Base: `97f18f1`. Repair commits: `a0c6c66` (recovery/import/stock), `e3760ea` (return receipts/report scale). This report supersedes the earlier phase-review claims where they conflict. SPEC.md is unchanged.
+16 November 2026. Base: `e07764d`. Repair commits: `8d132d9` (recovery/import/stock), `191f821` (return receipts/report scale). This report supersedes the earlier phase-review claims where they conflict. SPEC.md is unchanged.
 
 ## Result
 

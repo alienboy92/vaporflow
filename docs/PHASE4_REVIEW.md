@@ -2,7 +2,7 @@
 
 > Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
 
-Updated 15 November 2026. Scope: products, variants, and stock workflows. Implementation commit `bb9387d`, review-repair commit `f03b265`, badge-refresh commit `3d2e0e0`. `docs/SPEC.md` is unchanged.
+Updated 15 November 2026. Scope: products, variants, and stock workflows. Implementation commit `cfe9fdd`, review-repair commit `c9a82c6`, badge-refresh commit `36dacb6`. `docs/SPEC.md` is unchanged.
 
 ## What was built
 
@@ -14,11 +14,11 @@ Updated 15 November 2026. Scope: products, variants, and stock workflows. Implem
 
 ## Review findings and fixes
 
-Independent review of `bb9387d` found six issues; all are resolved in `f03b265` and `3d2e0e0` with regression coverage:
+Independent review of `cfe9fdd` found six issues; all are resolved in `c9a82c6` and `36dacb6` with regression coverage:
 
 1. **HIGH — editing a product silently doubled stock** for variants without a prior `'opening'` movement: the edit modal prefilled Opening Stock with current on-hand and submitted it as an opening movement, and the dedup guard only checked for `'opening'` movements. Reproduced at core level (restock +10, then edit → on-hand 20). Fixed in both layers: the UI only sends opening stock for newly added variant rows and hides the field for existing variants; `saveProductWithVariantsAndOpeningStock` now refuses opening movements for any variant that already has a movement. Regression test replays the exact failure sequence.
-2. **MEDIUM — `docs/BUILD_PROMPTS.md` corrupted** in `bb9387d` (Prompt 3's opening line truncated to "n, then proceed."; "repoZsitories"). Both lines restored.
-3. **MEDIUM — generated artifacts and session notes committed**: `apps/desktop/dist-electron/*` (~20k-line bundle) and `memory/` were tracked despite gitignore. Untracked in `f03b265`; `memory/` added to `.gitignore`.
+2. **MEDIUM — `docs/BUILD_PROMPTS.md` corrupted** in `cfe9fdd` (Prompt 3's opening line truncated to "n, then proceed."; "repoZsitories"). Both lines restored.
+3. **MEDIUM — generated artifacts and session notes committed**: `apps/desktop/dist-electron/*` (~20k-line bundle) and `memory/` were tracked despite gitignore. Untracked in `c9a82c6`; `memory/` added to `.gitignore`.
 4. **MEDIUM — coverage did not match the builder report** (3 tests; the rollback test was a single raw statement). `phase4.test.ts` now has 12 tests including a true mid-batch rollback over a composed catalog batch (product + variants + opening movement, asserting nothing survived), shop-default threshold equality, zero on-hand, Out/Negative filters with single badge count, validation-failure no-partial-write tests, and Stock In without a purchase price leaving `cost_price` unchanged.
 5. **LOW — Stock In gaps**: the "optional" purchase price was always applied (rewriting `cost_price` and marking the variant dirty every restock), clearing the field crashed with a raw NaN binding error, and qty ≤ 0 rows were silently skipped while the UI reported success. Price is now genuinely optional (empty = keep current), quantities/prices are validated as positive/non-negative integers in both UI and repo, and invalid rows error out instead of being skipped.
 6. **LOW — edit-modal UX**: "Remove" on an existing variant did nothing to the database, and the Opening Stock field was misleading. Existing variants now soft-delete in the same save batch, and the Opening Stock input is shown only for new variant rows. The below-cost warning now also covers a zero selling price.
@@ -30,7 +30,7 @@ Independent review of `bb9387d` found six issues; all are resolved in `f03b265` 
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
 | `pnpm test` | PASS — 66 tests, 10 files (12 in `phase4.test.ts`) |
-| Core-level probe of the F1 doubling sequence | Reproduced on `bb9387d` (10 → 20); fixed and regression-tested on `f03b265` |
+| Core-level probe of the F1 doubling sequence | Reproduced on `cfe9fdd` (10 → 20); fixed and regression-tested on `c9a82c6` |
 | Mid-batch rollback over a composed catalog batch | PASS — no product, variants, or movements survive |
 | Barcode generation | PASS — 50-sample checksum/prefix assertions; duplicate rejection across saves and within one batch |
 

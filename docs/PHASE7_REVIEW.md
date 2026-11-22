@@ -2,7 +2,7 @@
 
 > Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
 
-Updated 16 November 2026. Scope: CSV product import and backup/restore. Implementation commit `7afe425`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
+Updated 16 November 2026. Scope: CSV product import and backup/restore. Implementation commit `c719865`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
 
 ## What was built
 
@@ -11,7 +11,7 @@ Updated 16 November 2026. Scope: CSV product import and backup/restore. Implemen
 
 ## Review findings and fixes
 
-Independent review of `7afe425` found ten issues; all are resolved:
+Independent review of `c719865` found ten issues; all are resolved:
 
 1. **HIGH — receipt-counter recovery was a silent no-op, and off-by-one**: the recovery looked up a settings key `active_device_code` that exists nowhere (Phase 3 stores `active_device_id`; codes live in the devices table), so it never ran and its empty `catch` hid that. It also wrote `max + 1`, while the Phase 5 convention is that the counter stores **last-used** — writing max + 1 would permanently skip a number. Rewritten to recover from the max across **all** restored receipts (the counter is one global key, so a clean-install restore of any backup is covered) and to write the max itself. A clean-install restore now leaves the counter at the last-used number and the next sale continues after it — proven by a test that completes a sale on the restored database and asserts `PC1-000003` after two restored sales.
 2. **HIGH — "Update prices" could destroy data**: the update wrote `data.barcode || null` / `data.sku || null`, nulling an existing variant's barcode/sku when the CSV row omitted them, and silently rebound a barcode when a name-matched row carried a different one. Updates now preserve existing barcode/sku/threshold when the row omits them, and a CSV barcode that conflicts with the matched variant's own barcode is rejected as a row error (both in preview and as an in-execute guard against stale previews) instead of silently merging.

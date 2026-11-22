@@ -1,6 +1,6 @@
 # VaporFlow — Phase 8B review
 
-Updated 17 November 2026. Scope: Auth, cloud enrollment, and Supabase integration. Implementation commit `f3363e5`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` and `docs/BUILD_PROMPTS.md` are unchanged.
+Updated 17 November 2026. Scope: Auth, cloud enrollment, and Supabase integration. Implementation commit `fdb4044`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` and `docs/BUILD_PROMPTS.md` are unchanged.
 
 ## What was built (as reviewed)
 
@@ -10,7 +10,7 @@ Updated 17 November 2026. Scope: Auth, cloud enrollment, and Supabase integratio
 
 ## Review verdict: BLOCKED (8 findings) — all repaired
 
-Independent review of `f3363e5` found the transport boundary thin and correct, but the phase's own acceptance unimplementable as built:
+Independent review of `fdb4044` found the transport boundary thin and correct, but the phase's own acceptance unimplementable as built:
 
 1. **HIGH — the sync engine never ran in the app**: no `engine.start()` and no `saleCompleted()` anywhere in app code; sync only happened on button clicks, and failed manual syncs leaked orphaned engines with backoff timers. **Fixed**: `CloudSyncProvider` (see below) starts the engine on connect and restore; `saleCompleted()` is wired into `SaleScreen` after `completeSale` (2 s debounce, no-op when cloud is not connected).
 2. **HIGH — new SupabaseClient + engine per button click**: three creation sites (claim, Sync Now, sign-out) broke `autoRefreshToken` (access tokens expire ~1 h) and orphaned running engines. **Fixed**: one app-lifetime `CloudSyncProvider` owns exactly ONE client and at most ONE engine; `saveConfig`/sign-out stop the old engine before replacement; unmount cleanup stops timers.

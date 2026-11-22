@@ -1,6 +1,6 @@
 # VaporFlow — Phase 8A review
 
-Updated 16 November 2026. Scope: sync engine and simulated devices (fake transport, two-device convergence). Implementation commit `1e2fa0e`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
+Updated 16 November 2026. Scope: sync engine and simulated devices (fake transport, two-device convergence). Implementation commit `e8c465c`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
 
 ## What was built
 
@@ -11,7 +11,7 @@ Updated 16 November 2026. Scope: sync engine and simulated devices (fake transpo
 
 ## Review findings and fixes
 
-Independent review of `1e2fa0e` found ten issues; all are resolved:
+Independent review of `e8c465c` found ten issues; all are resolved:
 
 1. **HIGH — no PG↔local conversion layer**: the engine validated pulled rows with the local schemas, but production rows have PG booleans (`is_active`, `track_stock`, `show_logo_on_receipt`, `restocked` as `true/false`), offset/microsecond `timestamptz` strings, and no `dirty` column — every real pull would have failed validation, and local 0/1 pushes could not cast into PG BOOLEAN columns. New `sync/convert.ts` converts in both directions: `toWire` (push: booleans→true/false, drops local-only `dirty`/`server_updated_at`), `wireToLocal` (pull: booleans→0/1, timestamps normalized to exactly-3ms UTC by truncation, injects `dirty: 0`), and `storageToWire` (the fake server's pull mirrors `to_jsonb(t)`). The engine converts before schema validation and before transport push. Unit tests feed production-shaped PGlite-style payloads (microseconds, `+00:00` offsets, `true` booleans, missing `dirty`) through the conversion and the local Zod schemas; the engine-level wire-shape tests prove pushed rows carry booleans and no `dirty`.
 2. **HIGH — the fake server modeled the wrong failure mode**: it returned per-row `errors[]` while accepting siblings, but the real `sync_push` is batch-atomic — any row failure raises and rolls back the whole batch (proven by the PGlite tests). Rewritten: constraint violations (duplicate barcode, missing id/shop_id, malformed rows) throw and nothing is written; the engine catches the throw, records one actionable problem for the batch, and lets `syncNow` schedule the backoff retry. In-batch conflicts (two rows sharing a barcode) hit the storage unique index and roll back the whole transaction.

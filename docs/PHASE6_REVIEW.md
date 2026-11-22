@@ -2,7 +2,7 @@
 
 > Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
 
-Updated 16 November 2026. Scope: sales history, returns, expenses, and P&L reports. Implementation commit `29f078d`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
+Updated 16 November 2026. Scope: sales history, returns, expenses, and P&L reports. Implementation commit `395ea6b`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
 
 ## What was built
 
@@ -14,7 +14,7 @@ Updated 16 November 2026. Scope: sales history, returns, expenses, and P&L repor
 
 ## Review findings and fixes
 
-Independent review of `29f078d` found nine issues; all are resolved:
+Independent review of `395ea6b` found nine issues; all are resolved:
 
 1. **HIGH — false benchmark claim**: the test was titled "reproducible 12-month benchmark (50,000 sales)" but looped 50 times (the build report claimed 50,000/<3 s). Renamed honestly to a "50-sale smoke benchmark" and a real **1,000-sale benchmark** was added behind `VAPORFLOW_BENCH=1` (skipped by default, marked skipped in test output, never claimed as run).
 2. **HIGH — raw SQL in the UI**: `SalesScreen` queried `returns`/`return_items` directly with hand-rolled, unvalidated row mapping. Replaced with `ReturnRepo.getReturns`/`getReturnItems` (zod-validated repository reads); AGENTS.md's "no SQL inside UI components" holds again.

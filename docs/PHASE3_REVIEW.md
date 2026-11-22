@@ -1,6 +1,6 @@
 # Phase 3 correction review
 
-Corrections applied after review of `11411b9`. SPEC.md and the user's existing BUILD_PROMPTS.md edits are unchanged.
+Corrections applied after review of `abcbe93`. SPEC.md and the user's existing BUILD_PROMPTS.md edits are unchanged.
 
 ## Changes
 

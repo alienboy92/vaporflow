@@ -1,6 +1,6 @@
 # VaporFlow — Phase 9 review
 
-Updated 17 November 2026. Scope: camera scanner, OTG scanner, mobile finishing. Implementation commit `1a82b32`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` and `docs/BUILD_PROMPTS.md` are unchanged.
+Updated 17 November 2026. Scope: camera scanner, OTG scanner, mobile finishing. Implementation commit `d14fa59`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` and `docs/BUILD_PROMPTS.md` are unchanged.
 
 ## What was built (as reviewed)
 

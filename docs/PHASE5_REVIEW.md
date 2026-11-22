@@ -2,7 +2,7 @@
 
 > Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
 
-Updated 16 November 2026. Scope: offline checkout, receipts, and labels. Implementation commit `bdc3d3d`, review-repair commit `edb176e`. `docs/SPEC.md` is unchanged.
+Updated 16 November 2026. Scope: offline checkout, receipts, and labels. Implementation commit `a3a3af9`, review-repair commit `7be9d00`. `docs/SPEC.md` is unchanged.
 
 ## What was built
 
@@ -13,7 +13,7 @@ Updated 16 November 2026. Scope: offline checkout, receipts, and labels. Impleme
 
 ## Review findings and fixes
 
-Independent review of `bdc3d3d` found nine issues (two probe-confirmed); all are resolved with regression coverage:
+Independent review of `a3a3af9` found nine issues (two probe-confirmed); all are resolved with regression coverage:
 
 1. **HIGH — Checkpoint C missing**: `window.print()` printed the whole POS page (no print stylesheet existed), there was no A4 label printing at all, and Share only sent text. Fixed with the hidden-iframe print path, the label sheet modal, the core EAN-13 encoder, and real PDF file sharing on both platforms. The report had claimed an "80mm CSS print stylesheet" that did not exist.
 2. **HIGH — receipt numbering not concurrency-safe (probe-confirmed)**: the counter was read outside the batch and there was no unique index; two concurrent completions both committed `PC1-000001`. Fixed by migration 003 plus a clear conflict error; the regression test proves exactly one commit survives, the loser rolls back (counter still at the winner's value), and the retry receives `PC1-000002`.
