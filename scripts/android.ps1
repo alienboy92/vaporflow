@@ -1,5 +1,5 @@
 param(
-    [switch]$Doctor,
+    [switch]$Doctor, [switch]$PrepareOnly,
     [string]$Target
 )
 
@@ -24,6 +24,13 @@ function Ensure-CameraPermission {
 }
 Ensure-CameraPermission
 
+$moduleFile = Join-Path $androidProject 'app/build.gradle'
+if (!(Test-Path $moduleFile)) { throw 'Generate the Android project with cap add android first.' }
+$signingImport = "apply from: '../../release-signing.gradle'"
+if (![IO.File]::ReadAllText($moduleFile).Contains($signingImport)) {
+    [IO.File]::AppendAllText($moduleFile, [Environment]::NewLine + $signingImport + [Environment]::NewLine)
+}
+if ($PrepareOnly) { exit 0 }
 $androidChecksPassed = $true
 function Write-AndroidCheck([bool]$Passed, [string]$Name, [string]$Detail, [string]$Fix) {
     if ($Passed) { Write-Host "PASS $Name - $Detail" }

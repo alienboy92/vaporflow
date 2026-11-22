@@ -125,3 +125,25 @@ apps/mobile        — Capacitor shell (Android)
 supabase/migrations — Postgres schema and RLS policies
 docs/              — Product specification
 ```
+
+## Release signing
+
+From the repository root, generate the Android project as described above if it is absent. For a new signing identity, choose a private directory outside the repository and create the key interactively:
+
+    keytool -genkeypair -v -storetype JKS -keystore C:/private/VaporFlow-release.jks -alias vaporflow -keyalg RSA -keysize 3072 -validity 10000
+
+Back up the key securely and store passwords in a password manager. Reuse the same identity for app updates. Copy the example locally, then edit the four values in the ignored copy. Use forward slashes for Windows paths and Java properties escaping for literal backslashes.
+
+    Copy-Item apps/mobile/keystore.properties.example apps/mobile/android/keystore.properties
+    notepad apps/mobile/android/keystore.properties
+
+Build from PowerShell and verify the APK signature and certificate fingerprint against the expected signing identity:
+
+    pnpm --filter @vaporflow/mobile build
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android.ps1 -PrepareOnly
+    pnpm --filter @vaporflow/mobile exec cap sync android
+    . ./scripts/android-env.ps1
+    & ./apps/mobile/android/gradlew.bat -p apps/mobile/android assembleRelease
+    & "$androidSdk/build-tools/34.0.0/apksigner.bat" verify --verbose --print-certs apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+
+For a debug APK, use assembleDebug instead. Debug builds do not need keystore.properties. After regenerating the native project, repeat the preparation command. In apps/mobile/release-signing.gradle, keep versionName aligned with the core product version and increase versionCode on every release.

@@ -1,0 +1,28 @@
+def propsFile = rootProject.file('keystore.properties')
+def keys = new Properties()
+if (propsFile.exists()) {
+    propsFile.withInputStream { keys.load(it) }
+}
+android {
+    defaultConfig {
+        versionName '1.0.0'
+        versionCode 1
+    }
+    signingConfigs {
+        release {
+            if (keys.storeFile) storeFile rootProject.file(keys.storeFile)
+            storePassword keys.storePassword
+            keyAlias keys.keyAlias
+            keyPassword keys.keyPassword
+        }
+    }
+    buildTypes.release.signingConfig signingConfigs.release
+}
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.project == project && it.name in ['packageRelease', 'signReleaseBundle', 'assembleRelease', 'bundleRelease'] }) {
+        if (!propsFile.isFile()) throw new GradleException('keystore.properties missing: see README Release signing')
+        if (!['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].every { keys[it] }) {
+            throw new GradleException('Incomplete keystore.properties: see README Release signing')
+        }
+    }
+}
