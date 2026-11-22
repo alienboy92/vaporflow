@@ -16,11 +16,13 @@ import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
 import { registerBackHandler } from '../utils/back-nav';
 import { useToast } from '../components/Toast';
+import { useUpdates } from '../context/UpdateProvider';
 
 export function SettingsScreen() {
   const db = useDb();
   const platform = usePlatform();
   const toast = useToast();
+  const updates = useUpdates();
   const [shop, setShop] = useState<Shop | null>(null);
   const [device, setDevice] = useState<Device | null>(null);
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -750,6 +752,105 @@ export function SettingsScreen() {
           <p>Version: {APP_VERSION}</p>
           <p>{platform.platform === 'desktop' ? 'Platform: Windows desktop' : 'Platform: Android'}</p>
         </div>
+      </section>
+
+      <section className="vf-card space-y-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="vf-title">Software Updates</h2>
+          <span
+            className={`vf-badge ${
+              updates.status === 'available'
+                ? 'vf-badge-amber'
+                : updates.status === 'current'
+                  ? 'vf-badge-green'
+                  : updates.status === 'error'
+                    ? 'vf-badge-rose'
+                    : 'vf-badge-slate'
+            }`}
+          >
+            {updates.status === 'checking'
+              ? 'Checking…'
+              : updates.status === 'available'
+                ? 'Update available'
+                : updates.status === 'current'
+                  ? 'Up to date'
+                  : updates.status === 'error'
+                    ? 'Check failed'
+                    : 'Not checked'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <span className="vf-sub block">Current version</span>
+            <span className="vf-num font-semibold text-slate-900">{APP_VERSION}</span>
+          </div>
+          <div>
+            <span className="vf-sub block">Latest version</span>
+            <span className="vf-num font-semibold text-slate-900">
+              {updates.info?.latestVersion ?? '—'}
+            </span>
+          </div>
+          <div>
+            <span className="vf-sub block">Last checked</span>
+            <span className="text-slate-700">
+              {updates.lastChecked
+                ? new Date(updates.lastChecked).toLocaleString()
+                : 'Not checked yet'}
+            </span>
+          </div>
+        </div>
+
+        {updates.status === 'available' && updates.info && (
+          <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p>
+              Version <strong>{updates.info.latestVersion}</strong> is available. Installing it
+              keeps your shop data on this device.
+            </p>
+            {updates.info.notes && (
+              <details>
+                <summary className="cursor-pointer font-semibold">Release notes</summary>
+                <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs">
+                  {updates.info.notes}
+                </p>
+              </details>
+            )}
+          </div>
+        )}
+
+        {updates.status === 'current' && (
+          <p className="text-sm text-emerald-700">You are running the latest version.</p>
+        )}
+
+        {updates.error && (
+          <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            {updates.error}
+          </p>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={updates.status === 'checking'}
+            onClick={() => void updates.check(true)}
+            className="vf-btn-ghost"
+          >
+            {updates.status === 'checking' ? 'Checking…' : 'Check for updates'}
+          </button>
+          {updates.status === 'available' && updates.info && (
+            <button
+              type="button"
+              onClick={() => void updates.openDownload()}
+              className="vf-btn-primary"
+            >
+              Download update
+            </button>
+          )}
+        </div>
+        <p className="vf-sub">
+          Downloads open in your browser. Run the new installer on Windows or open the APK on
+          Android; your data stays on this device and is upgraded automatically.
+        </p>
       </section>
 
       <section className="vf-card space-y-4 p-5">

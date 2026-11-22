@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { assertSender, validateBatch, validateQuery } from './ipc-policy.js';
+import { assertSender, validateBatch, validateExternalUrl, validateQuery } from './ipc-policy.js';
 
 it('accepts only the expected main frame and window', () => {
   const expected = { webContentsId: 1, url: 'file:///app/index.html' };
@@ -19,4 +19,18 @@ it('rejects malformed SQL payloads and unsupported parameter values', () => {
     expect(() => validateQuery('SELECT ?', params)).toThrow();
   expect(() => validateBatch([{ sql: '' }])).toThrow();
   expect(() => validateBatch([{ sql: 'SELECT 1', extra: true }])).toThrow();
+});
+it('opens only GitHub HTTPS links from the renderer', () => {
+  expect(validateExternalUrl('https://github.com/a/b/releases/tag/v1')).toBe(
+    'https://github.com/a/b/releases/tag/v1',
+  );
+  for (const invalid of [
+    'http://github.com/a/b',
+    'https://evil.example/a',
+    'javascript:alert(1)',
+    'file:///C:/Windows/system32/calc.exe',
+    42,
+  ]) {
+    expect(() => validateExternalUrl(invalid)).toThrow('Blocked external URL');
+  }
 });

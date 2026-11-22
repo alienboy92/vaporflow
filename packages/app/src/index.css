@@ -44,6 +44,7 @@
   .pos-workspace { @apply flex-1 min-w-0 flex flex-col; }
   .pos-header { @apply relative z-20 h-16 px-4 lg:px-6 shrink-0 bg-white border-b border-slate-200 flex items-center gap-3; }
   .pos-header h1 { @apply text-base lg:text-lg font-bold text-slate-900 leading-tight truncate; }
+  .update-banner { @apply flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 lg:px-6; }
   .pos-main { @apply flex-1 overflow-y-auto min-h-0 bg-slate-50 pb-24 md:pb-0; }
   .icon-button { @apply min-w-11 min-h-11 inline-flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100; }
   .phone-nav { @apply fixed md:hidden z-40 inset-x-0 bottom-0 flex items-stretch border-t border-slate-200 bg-white px-1 py-1 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]; padding-bottom: calc(0.25rem + env(safe-area-inset-bottom)); }

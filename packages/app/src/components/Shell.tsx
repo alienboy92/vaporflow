@@ -13,6 +13,7 @@ import { Icon } from './Icon';
 import { SyncBadge } from './SyncBadge';
 import { Sheet } from './Sheet';
 import { LockScreen } from './LockScreen';
+import { UpdateBanner } from './UpdateBanner';
 import { useSecurity } from './use-security';
 import { globalErrorLogger } from '../utils/logger';
 import { STOCK_CHANGED_EVENT } from '../utils/stock-events';
@@ -204,6 +205,7 @@ export function Shell() {
             </button>
           )}
         </header>
+        <UpdateBanner />
         <main className="pos-main" key={location.pathname}>
           <Routes>
             <Route path="/" element={<SaleScreen draft={draft} />} />

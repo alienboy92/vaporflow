@@ -6,6 +6,7 @@ import { ShopRepo } from '@vaporflow/core';
 import { SetupWizard } from './screens/SetupWizard';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/Toast';
+import { UpdateProvider } from './context/UpdateProvider';
 import { globalErrorLogger } from './utils/logger';
 
 function AppRoot() {
@@ -66,9 +67,11 @@ export function App() {
   return (
     <DbProvider>
       <CloudSyncProvider>
-        <ToastProvider>
-          <AppRoot />
-        </ToastProvider>
+        <UpdateProvider>
+          <ToastProvider>
+            <AppRoot />
+          </ToastProvider>
+        </UpdateProvider>
       </CloudSyncProvider>
     </DbProvider>
   );

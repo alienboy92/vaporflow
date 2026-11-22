@@ -1,10 +1,10 @@
 import { MIGRATIONS } from '@vaporflow/core';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import { ElectronDbAdapter } from './sqlite-adapter.js';
-import { assertSender, validateBatch, validateQuery } from './ipc-policy.js';
+import { assertSender, validateBatch, validateExternalUrl, validateQuery } from './ipc-policy.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const development = !app.isPackaged;
@@ -62,6 +62,10 @@ async function start(): Promise<void> {
   ipcMain.handle('db:migrate', async (event) => {
     guard(event);
     await database!.migrate();
+  });
+  ipcMain.handle('app:openExternal', async (event, url: unknown) => {
+    guard(event);
+    await shell.openExternal(validateExternalUrl(url));
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => {

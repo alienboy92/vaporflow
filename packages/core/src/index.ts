@@ -12,6 +12,7 @@ export * from './uuid.js';
 export * from './barcode.js';
 export * from './db-adapter.js';
 export * from './version.js';
+export * from './updates.js';
 export * from './reset.js';
 export * from './migrations/data.js';
 export * from './migrations/runner.js';

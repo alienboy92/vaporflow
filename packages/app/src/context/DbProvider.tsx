@@ -34,7 +34,7 @@ async function shareFileDesktop(name: string, data: Uint8Array | string, mime: s
 }
 
 async function initialize(): Promise<PlatformAdapters> {
-  let database: Pick<PlatformAdapters, 'db' | 'platform' | 'share' | 'scanner' | 'printer'>;
+  let database: Pick<PlatformAdapters, 'db' | 'platform' | 'share' | 'scanner' | 'printer' | 'app'>;
   if (window.vaporflow?.platform === 'desktop') {
     const api = window.vaporflow;
     database = {
@@ -54,6 +54,9 @@ async function initialize(): Promise<PlatformAdapters> {
         scanWithCamera: () => unavailable('Camera scanning'),
       },
       printer: browserPrinter,
+      app: {
+        openExternal: (url) => api.app.openExternal(url),
+      },
     };
     await database.db.migrate();
   } else {

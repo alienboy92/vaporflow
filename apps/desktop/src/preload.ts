@@ -8,5 +8,8 @@ const bridge: DesktopBridge = {
     batch: (statements) => ipcRenderer.invoke('db:batch', statements),
     migrate: () => ipcRenderer.invoke('db:migrate'),
   },
+  app: {
+    openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  },
 };
 contextBridge.exposeInMainWorld('vaporflow', bridge);

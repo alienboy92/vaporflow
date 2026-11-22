@@ -1,4 +1,4 @@
-import { BatchSchema, StatementSchema } from '@vaporflow/core';
+import { BatchSchema, isAllowedExternalUrl, StatementSchema } from '@vaporflow/core';
 
 export function assertSender(
   actual: { webContentsId: number; isMainFrame: boolean; url: string },
@@ -18,4 +18,12 @@ export function validateQuery(sql: unknown, params: unknown) {
 }
 export function validateBatch(statements: unknown) {
   return BatchSchema.parse(statements);
+}
+
+/** External links are restricted to GitHub over HTTPS. */
+export function validateExternalUrl(input: unknown): string {
+  if (typeof input !== 'string' || !isAllowedExternalUrl(input)) {
+    throw new Error('Blocked external URL');
+  }
+  return new URL(input).toString();
 }
