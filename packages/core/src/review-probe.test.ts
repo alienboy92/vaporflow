@@ -1,5 +1,5 @@
 import { BatchSchema } from './adapters/validation.js';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SqliteTestAdapter } from './testing/sqlite-test-adapter.js';
 import { previewCsvImport, executeCsvImport } from './csv-import.js';
 import { exportBackupJson, validateBackupJson, restoreBackup } from './backup.js';
@@ -56,11 +56,23 @@ describe('Phase 7: CSV Import and Backup/Restore', () => {
     });
   });
 
+  it('rejects fractional, non-finite and unsafe CSV prices before import', async () => {
+    for (const price of ['12.50', '1.00000000000000001', 'Infinity', '9007199254740992']) {
+      const preview = await previewCsvImport(db, shopId, `product_name,cost_price,sale_price\nProbe,${price},20`);
+      expect(preview.rows[0]?.errors.length).toBeGreaterThan(0);
+    }
+  });
+
   it('review probe: valid restore into populated database', async () => {
     const csv = 'category,product_name,variant_name,cost_price,sale_price,opening_stock\nGeneral,Probe,Default,10,20,5';
     await executeCsvImport(db, shopId, deviceId, (await previewCsvImport(db, shopId, csv)).rows, 'skip');
+    const reads = vi.spyOn(db, 'query');
     const backup = validateBackupJson(await exportBackupJson(db, shopId)).data!;
+    expect(reads).toHaveBeenCalledTimes(1);
+    reads.mockRestore();
+    await db.query("INSERT INTO settings(key,value) VALUES ('sync_cursor_sales_timestamp','old'),('sync_cursor_sales_id','old')");
     await restoreBackup(db, backup);
+    expect(await db.query("SELECT key FROM settings WHERE key GLOB 'sync_cursor_*'")).toEqual([]);
     expect((await new StockRepo(db).getStockOnHand(shopId))[0]!.on_hand).toBe(5);
     await expect(db.query('DELETE FROM stock_movements')).rejects.toThrow('Ledger rows are immutable');
   });

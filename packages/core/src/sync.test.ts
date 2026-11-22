@@ -1,3 +1,4 @@
+import { ReturnRepo } from './repositories/return.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import { SqliteTestAdapter } from './testing/sqlite-test-adapter.js';
@@ -515,6 +516,54 @@ describe('Sync Engine & Two-Device Convergence (Phase 8A)', () => {
     const salesB = await saleRepoB.getSales(shopId);
     expect(salesA).toHaveLength(2);
     expect(salesB).toHaveLength(2);
+
+    for (const [db, device] of [[clientADb, devAId], [clientBDb, devBId]] as const) {
+      await new ReturnRepo(db).processReturn({ shop_id: shopId, device_id: device,
+        sale_id: saleIdA, returned_at: time, refund_method: 'cash', note: null,
+        lines: [{ sale_item_id: itemIdA, variant_id: variantId, qty: 10, restocked: true }],
+      }, uuidv7(), [uuidv7()], [uuidv7()], time);
+    }
+    await engineA.syncNow();
+    await engineB.syncNow();
+    await engineA.syncNow();
+    for (const db of [clientADb, clientBDb]) {
+      const repo = new ReturnRepo(db);
+      expect((await repo.getReturns(shopId)).map(row => row.refund_amount)).toEqual([5000, 5000]);
+      expect(await repo.getOverReturns(shopId)).toMatchObject([{ item_id: itemIdA, sold: 10, returned: 20 }]);
+      expect((await new StockRepo(db).getStockOnHand(shopId, variantId))[0]?.on_hand).toBe(95);
+    }
+  });
+
+  it('preserves an edit saved immediately before a pull batch commits', async () => {
+    await engineA.syncNow();
+    const batch = clientBDb.batch.bind(clientBDb);
+    clientBDb.batch = async statements => {
+      if (statements.some(s => s.sql.startsWith('INSERT INTO shops'))) {
+        await clientBDb.query("UPDATE shops SET name='Local edit', dirty=1, updated_at='2030-01-01T00:00:00.000Z' WHERE id=?", [shopId]);
+      }
+      await batch(statements);
+    };
+    await engineB.syncNow();
+    expect(await clientBDb.query('SELECT name,dirty FROM shops')).toEqual([{ name: 'Local edit', dirty: 1 }]);
+  });
+
+  it('keeps sub-millisecond precision between full pull pages', async () => {
+    const timestamp = '2026-11-16T12:00:00.123456+00:00';
+    const rows = Array.from({ length: 501 }, (_, i) => ({
+      id: uuidv7(), shop_id: shopId, device_id: devAId, name: String(i), sort_order: i,
+      created_at: time, updated_at: time, server_updated_at: timestamp, deleted_at: null,
+    }));
+    const transport: SyncTransport = {
+      push: (table, items) => server.push(table, items),
+      pull: async (table, shop, ts, id, limit) => {
+        if (table !== 'categories') return server.pull(table, shop, ts, id, limit);
+        if (ts === null) return rows.slice(0, 500);
+        if (ts !== timestamp || id !== rows[499]?.id) throw new Error('Lost cursor precision');
+        return rows.slice(500);
+      },
+    };
+    await new SyncEngine(clientBDb, transport, networkB, shopId).syncNow();
+    expect((await new CategoryRepo(clientBDb).getAll(shopId)).length).toBe(501);
   });
 
   it('preserves a dirty newer local mutable row over older server row', async () => {

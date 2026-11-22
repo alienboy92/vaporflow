@@ -6,26 +6,26 @@ import { CategoryRepo } from './repositories/category.js';
 import { uuidv7 } from './uuid.js';
 import { Variant } from './types/schemas.js';
 
+function csvPrice(label: string) {
+  return z.union([z.string(), z.number()]).transform((value, ctx) => {
+    const text = String(value).trim();
+    // Validate the decimal spelling first. Number() can round a fraction to a safe integer.
+    if (!/^\d+(?:\.0+)?$/.test(text) || !Number.isSafeInteger(Number(text))) {
+      ctx.addIssue({ code: 'custom', message: `${label} must be a non-negative whole number in the safe integer range` });
+      return z.NEVER;
+    }
+    return Number(text);
+  });
+}
+
 export const CsvRowInputSchema = z.object({
   category: z.string().optional().default('General'),
   product_name: z.string().min(1, 'Product name is required'),
   variant_name: z.string().optional().default('Default'),
   barcode: z.string().optional().nullable().transform((v) => (v ? String(v).trim() : null)),
   sku: z.string().optional().nullable().transform((v) => (v ? String(v).trim() : null)),
-  cost_price: z.union([z.string(), z.number()]).transform((val) => {
-    const s = String(val ?? '').trim();
-    if (!s) throw new Error('Cost price is required');
-    const n = Number(s);
-    if (isNaN(n) || n < 0) throw new Error('Invalid cost price');
-    return Math.round(n);
-  }),
-  sale_price: z.union([z.string(), z.number()]).transform((val) => {
-    const s = String(val ?? '').trim();
-    if (!s) throw new Error('Sale price is required');
-    const n = Number(s);
-    if (isNaN(n) || n < 0) throw new Error('Invalid sale price');
-    return Math.round(n);
-  }),
+  cost_price: csvPrice('Cost price'),
+  sale_price: csvPrice('Sale price'),
   opening_stock: z.union([z.string(), z.number()]).optional().default(0).transform((val) => {
     const s = String(val ?? '').trim();
     if (!s) return 0;
@@ -38,7 +38,7 @@ export const CsvRowInputSchema = z.object({
     if (!s) return null;
     const n = Number(s);
     if (isNaN(n) || !Number.isInteger(n) || n < 0) throw new Error('Low stock threshold must be a non-negative integer');
-    return Math.round(n);
+    return n;
   }),
 });
 

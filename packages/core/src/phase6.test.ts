@@ -110,6 +110,22 @@ describe('Phase 6: History, Returns, Expenses, and Reports', () => {
     db.close();
   });
 
+  it('settles two partial refunds against a one-rupee line', async () => {
+    const lineId = uuidv7();
+    const saleId = uuidv7();
+    await new SaleRepo(db).completeSale({
+      shop_id: shopId, device_id: deviceId, sold_at: now, payment_method: 'cash', amount_received: 1,
+      discount_amount: 1, note: null, lines: [{ product_name: 'Test', variant_name: 'Test',
+        variant_id: variantId, qty: 2, list_price: 1, unit_price: 1 }],
+    }, saleId, [lineId], [uuidv7()], now);
+    const refund = () => new ReturnRepo(db).processReturn({
+      shop_id: shopId, device_id: deviceId, returned_at: now, sale_id: saleId, refund_method: 'cash',
+      note: null, lines: [{ sale_item_id: lineId, variant_id: variantId, qty: 1, restocked: true }],
+    }, uuidv7(), [uuidv7()], [uuidv7()], now);
+    expect((await refund()).ret.refund_amount).toBe(1);
+    expect((await refund()).ret.refund_amount).toBe(0);
+  });
+
   it('matches the seeded assertions for revenue, COGS, gross profit, expenses, and net profit', async () => {
     // Canonical seeded P&L from PHASE1_REVIEW.md: 2 sales totaling 7000
     // (cash 5000 + online 2000), 3 units sold at unit_cost 1200, expense 500.
@@ -199,6 +215,20 @@ describe('Phase 6: History, Returns, Expenses, and Reports', () => {
     expect(pnl.avg_sale_value).toBe(3500); // gross 7000 / 2 sales
     expect(pnl.cash_total).toBe(5000);
     expect(pnl.online_total).toBe(2000);
+    expect(pnl.refunds_total).toBe(0);
+
+    // Combined top-items table still reconciles with the P&L totals.
+    const topByProfit = await reportRepo.getTopItems(shopId, '2026-11-15', '2026-11-15', 'profit');
+    expect(topByProfit.length).toBeGreaterThan(0);
+    expect(topByProfit.reduce((sum, row) => sum + row.revenue, 0)).toBe(7000);
+    expect(topByProfit.reduce((sum, row) => sum + row.profit, 0)).toBe(3400);
+    for (let i = 1; i < topByProfit.length; i += 1) {
+      expect(topByProfit[i - 1]!.profit).toBeGreaterThanOrEqual(topByProfit[i]!.profit);
+    }
+    const topByQty = await reportRepo.getTopItems(shopId, '2026-11-15', '2026-11-15', 'qty');
+    for (let i = 1; i < topByQty.length; i += 1) {
+      expect(topByQty[i - 1]!.qty).toBeGreaterThanOrEqual(topByQty[i]!.qty);
+    }
   });
 
   it('supports returns with partial/full/no-restock and bounded quantities', async () => {
@@ -350,6 +380,7 @@ describe('Phase 6: History, Returns, Expenses, and Reports', () => {
     expect(pnl.net_profit).toBe(-2400);
     expect(pnl.sales_count).toBe(1);
     expect(pnl.avg_sale_value).toBe(3000); // gross revenue / count, before refunds
+    expect(pnl.refunds_total).toBe(3000);
   });
 
   it('supports expense CRUD operations and soft-deletes', async () => {

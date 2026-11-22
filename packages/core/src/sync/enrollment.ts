@@ -1,12 +1,11 @@
 /**
- * Cloud enrollment flows that run on real devices (Phase 8B).
+ * Cloud enrollment flows that run on real devices.
  *
- * `enrollExistingShop` implements the second-device flow from the build
- * prompt: on an EMPTY device, verify the shop exists in the cloud, register
- * this device with a device code unique across the shop, pull every synced
- * table from scratch, and recover the receipt counter with Phase 5's
- * last-used convention. Authentication (sign-in) and the claim_shop RPC stay
- * with the caller — this module only needs a transport.
+ * `enrollExistingShop` implements the second-device flow: on an EMPTY device,
+ * verify the shop exists in the cloud, register this device with a device code
+ * unique across the shop, pull every synced table from scratch, and recover the
+ * receipt counter with the last-used convention. Authentication (sign-in) and
+ * the claim_shop RPC stay with the caller — this module only needs a transport.
  */
 import { DbAdapter } from '../db-adapter.js';
 import { NetworkAdapter } from '../adapters/types.js';

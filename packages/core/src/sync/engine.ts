@@ -9,7 +9,7 @@ import {
   SyncProblem,
   TableSchemas,
 } from './types.js';
-import { toWire, wireToLocal, normalizeTimestamp } from './convert.js';
+import { toWire, wireToLocal } from './convert.js';
 
 export interface SyncEngineOptions {
   clock?: () => Date;
@@ -21,6 +21,8 @@ export interface SyncEngineOptions {
 
 export class SyncEngine {
   private isSyncing = false;
+  private stopped = false;
+  private idleWaiters: Array<() => void> = [];
   private queuedSync = false;
   private lastSuccessAt: string | null = null;
   private lastError: string | null = null;
@@ -52,6 +54,7 @@ export class SyncEngine {
   }
 
   async start(): Promise<void> {
+    this.stopped = false;
     this.unsubscribeNetwork = this.network.onChange((online) => {
       if (online) {
         this.trigger('network-reconnected');
@@ -69,7 +72,13 @@ export class SyncEngine {
     }
   }
 
+  async stopAndDrain(): Promise<void> {
+    this.stop();
+    if (this.isSyncing) await new Promise<void>(resolve => this.idleWaiters.push(resolve));
+  }
+
   stop(): void {
+    this.stopped = true;
     if (this.timer) {
       this.ci(this.timer);
       this.timer = null;
@@ -116,7 +125,7 @@ export class SyncEngine {
   }
 
   async syncNow(): Promise<void> {
-    if (!this.network.isOnline()) {
+    if (this.stopped || !this.network.isOnline()) {
       return;
     }
     if (this.isSyncing) {
@@ -140,7 +149,7 @@ export class SyncEngine {
       this.lastError = message;
       this.consecutiveFailures++;
       const backoffMs = Math.min(30000, 1000 * Math.pow(2, this.consecutiveFailures - 1));
-      this.backoffTimer = this.st(() => {
+      if (!this.stopped) this.backoffTimer = this.st(() => {
         this.backoffTimer = null;
         if (this.network.isOnline()) {
           this.trigger('retry-backoff');
@@ -149,7 +158,8 @@ export class SyncEngine {
       throw err instanceof Error ? err : new Error(message);
     } finally {
       this.isSyncing = false;
-      if (this.queuedSync) {
+      for (const resolve of this.idleWaiters.splice(0)) resolve();
+      if (!this.stopped && this.queuedSync) {
         this.queuedSync = false;
         this.queuedTimer = this.st(() => {
           this.queuedTimer = null;
@@ -368,14 +378,8 @@ export class SyncEngine {
         const rowId =
           typeof rawRow.id === 'string' && rawRow.id ? rawRow.id : String(rawRow.id ?? 'unknown');
         // The cursor for this row, usable even when the row fails validation.
-        let rowCursorTs: string | null = null;
-        if (typeof rawRow.server_updated_at === 'string') {
-          try {
-            rowCursorTs = normalizeTimestamp(rawRow.server_updated_at);
-          } catch {
-            rowCursorTs = rawRow.server_updated_at;
-          }
-        }
+        const rowCursorTs = typeof rawRow.server_updated_at === 'string'
+          ? rawRow.server_updated_at : null;
 
         let validated: Record<string, unknown>;
         try {
@@ -407,27 +411,13 @@ export class SyncEngine {
         const id = String(validated.id);
         const serverUpdatedAt = String(validated.server_updated_at);
 
-        const local = await this.db.query<Record<string, unknown>>(
-          `SELECT * FROM ${table} WHERE id = ?`,
-          [id],
-        );
-
-        if (mutable) {
-          if (
-            local.length > 0 &&
-            Number(local[0]?.dirty) === 1 &&
-            String(local[0]?.updated_at) > String(validated.updated_at)
-          ) {
-            lastServerUpdatedAt = serverUpdatedAt;
-            lastId = id;
-            continue;
-          }
-        }
-
         const stmt = getTableUpsertStatement(table, validated, serverUpdatedAt);
+        if (mutable) {
+          stmt.sql += ` WHERE ${table}.dirty = 0 OR ${table}.updated_at <= excluded.updated_at`;
+        }
         statements.push(stmt);
 
-        lastServerUpdatedAt = serverUpdatedAt;
+        lastServerUpdatedAt = rowCursorTs;
         lastId = id;
       }
 

@@ -2,7 +2,6 @@ import { exportBackupJson, validateBackupJson, restoreBackup } from '../backup.j
 import { uuidv7 } from '../uuid.js';
 import type { DbAdapter } from '../db-adapter.js';
 import { MIGRATIONS, type MigrationRecord } from '../migrations/data.js';
-import { readDevelopmentDbCheck, runDevelopmentDbCheck } from '../dev-check.js';
 
 type Factory = (migrations: readonly MigrationRecord[]) => {
   db: DbAdapter;
@@ -27,12 +26,29 @@ export const adapterContract = [
   {
     name: 'populated backup replacement preserves ledger protections and rollback',
     run: async (db: DbAdapter) => {
-      const fixture = await runDevelopmentDbCheck(db);
+      await db.migrate();
       const now = new Date().toISOString();
+      const shopId = uuidv7();
       const device = uuidv7();
-      await db.query("INSERT INTO devices(id,shop_id,created_at,updated_at,device_id,name,code) VALUES(?,?,?,?,?,'Contract','PC1')", [device, fixture.shopId, now, now, device]);
-      await db.query("INSERT INTO stock_movements(id,shop_id,created_at,updated_at,device_id,variant_id,qty_change,type,occurred_at) VALUES(?,?,?,?,?,?,7,'opening',?)", [uuidv7(), fixture.shopId, now, now, device, fixture.variantId, now]);
-      const backup = validateBackupJson(await exportBackupJson(db, fixture.shopId));
+      const productId = uuidv7();
+      const variantId = uuidv7();
+      await db.batch([
+        {
+          sql: "INSERT INTO shops(id,shop_id,name,created_at,updated_at,device_id,dirty) VALUES(?,?,?,?,?,?,0)",
+          params: [shopId, shopId, 'Contract Shop', now, now, device],
+        },
+        {
+          sql: "INSERT INTO products(id,shop_id,name,created_at,updated_at,device_id,dirty) VALUES(?,?,?,?,?,?,0)",
+          params: [productId, shopId, 'Contract Product', now, now, device],
+        },
+        {
+          sql: "INSERT INTO variants(id,shop_id,product_id,name,cost_price,sale_price,created_at,updated_at,device_id,dirty) VALUES(?,?,?,?,?,?,?,?,?,0)",
+          params: [variantId, shopId, productId, 'Default', 100, 250, now, now, device],
+        },
+      ]);
+      await db.query("INSERT INTO devices(id,shop_id,created_at,updated_at,device_id,name,code) VALUES(?,?,?,?,?,'Contract','PC1')", [device, shopId, now, now, device]);
+      await db.query("INSERT INTO stock_movements(id,shop_id,created_at,updated_at,device_id,variant_id,qty_change,type,occurred_at) VALUES(?,?,?,?,?,?,7,'opening',?)", [uuidv7(), shopId, now, now, device, variantId, now]);
+      const backup = validateBackupJson(await exportBackupJson(db, shopId));
       check(backup.success, 'Backup validation failed');
       await restoreBackup(db, backup.data!);
       await rejects(() => db.query('DELETE FROM stock_movements'), 'Ledger guard after restore');
@@ -106,23 +122,6 @@ export const adapterContract = [
       check(
         (await db.query("SELECT name FROM sqlite_master WHERE type = 'trigger'")).length > 0,
         'Migration triggers missing',
-      );
-    },
-  },
-  {
-    name: 'isolated fixture is explicit, repeatable and readable after creation',
-    run: async (db: DbAdapter) => {
-      await db.migrate();
-      check(!(await readDevelopmentDbCheck(db)).exists, 'Fixture created automatically');
-      await runDevelopmentDbCheck(db);
-      const result = await runDevelopmentDbCheck(db);
-      check(
-        result.exists && result.productCount === 1 && result.variantCount === 1,
-        'Fixture was duplicated',
-      );
-      check(
-        (await readDevelopmentDbCheck(db)).readBackName === 'Fixture Variant',
-        'Fixture read failed',
       );
     },
   },

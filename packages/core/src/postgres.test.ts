@@ -213,35 +213,35 @@ describe('PostgreSQL migration and tenant security', () => {
     expect((await pg.query('SELECT * FROM categories')).rows).toEqual([]);
   });
   it('paginates by timestamp and ID, includes tombstones, and scopes pulls', async () => {
-    const rows = Array.from({ length: 3 }, (_, i) => ({
+    const rows = Array.from({ length: 501 }, (_, i) => ({
       ...base(),
       name: `Category ${i}`,
       sort_order: i,
     }));
-    await push('categories', rows);
+    for (let i = 0; i < rows.length; i += 200) await push('categories', rows.slice(i, i + 200));
     await pg.exec(
-      "RESET ROLE; ALTER TABLE categories DISABLE TRIGGER tr_categories_server_updated_at; UPDATE categories SET server_updated_at = '2026-11-15T12:00:00Z'; ALTER TABLE categories ENABLE TRIGGER tr_categories_server_updated_at",
+      "RESET ROLE; ALTER TABLE categories DISABLE TRIGGER tr_categories_server_updated_at; UPDATE categories SET server_updated_at = '2026-11-15T12:00:00.123456Z'; ALTER TABLE categories ENABLE TRIGGER tr_categories_server_updated_at",
     );
     await identity(owner);
     const pull = async (timestamp: string | null, id: string | null) =>
       (
         await pg.query<{ data: { id: string; server_updated_at: string }[] }>(
-          'SELECT sync_pull($1,$2,$3,$4,2) AS data',
+          'SELECT sync_pull($1,$2,$3,$4,500) AS data',
           ['categories', shop, timestamp, id],
         )
       ).rows[0]!.data;
     const first = await pull(null, null);
-    expect(first).toHaveLength(2);
+    expect(first).toHaveLength(500);
     expect(first.map((row) => row.id)).toEqual(
       rows
         .map((row) => row.id)
         .sort()
-        .slice(0, 2),
+        .slice(0, 500),
     );
-    const last = first[1]!;
+    const last = first[499]!;
     const second = await pull(last.server_updated_at, last.id);
     expect(second).toHaveLength(1);
-    expect(new Set([...first, ...second].map((row) => row.id)).size).toBe(3);
+    expect(new Set([...first, ...second].map((row) => row.id)).size).toBe(501);
     await identity(other);
     await denied('SELECT sync_pull($1,$2,NULL,NULL,500)', ['categories', shop]);
   });

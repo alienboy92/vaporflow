@@ -1,6 +1,6 @@
 /**
  * DbAdapter interface definition and SqliteTestAdapter implementation (better-sqlite3 in-memory).
- * Phase 1 & 2: Asynchronous contract, bundled portable migrations, transactional safety.
+ * Asynchronous contract, bundled portable migrations, transactional safety.
  */
 
 import Database from 'better-sqlite3';

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { readRows } from '../query.js';
 import {
   SaleSchema,
@@ -15,11 +16,23 @@ import { addMoney, calcRefundAmount } from '../money.js';
 import { DbAdapter } from '../db-adapter.js';
 /**
  * Return repository and processReturn atomic batch.
- * Phase 1 correction: strict return integrity checks, duplicate rejection, tenant/sale verification.
+ * Strict return integrity checks, duplicate rejection, tenant/sale verification.
  */
 
 export class ReturnRepo {
   constructor(private db: DbAdapter) {}
+
+  async getOverReturns(shopId: string) {
+    return readRows(this.db, z.object({
+      item_id: IdSchema, receipt_no: z.string(), product_name: z.string(), variant_name: z.string(),
+      sold: z.number().int(), returned: z.number().int(),
+    }), `SELECT si.id AS item_id, s.receipt_no, si.product_name, si.variant_name,
+        si.qty AS sold, SUM(ri.qty) AS returned
+      FROM return_items ri JOIN sale_items si ON si.id = ri.sale_item_id
+      JOIN sales s ON s.id = si.sale_id
+      WHERE ri.shop_id = ? AND ri.deleted_at IS NULL
+      GROUP BY si.id HAVING SUM(ri.qty) > si.qty ORDER BY s.receipt_no, si.id`, [IdSchema.parse(shopId)]);
+  }
 
   /** All live returns for a shop, newest first. */
   async getReturns(shopId: string): Promise<Return[]> {
@@ -95,6 +108,7 @@ export class ReturnRepo {
     }
 
     // 3. Validate each sale item and already-returned quantities
+    const prior = new Map<string, { qty: number; refunded: number }>();
     const saleItemMap: Record<
       string,
       {
@@ -131,13 +145,14 @@ export class ReturnRepo {
 
       // Check already returned qty for this sale item across previous return items
       const returnedStats = await this.db.query<Record<string, unknown>>(
-        `SELECT COALESCE(SUM(ri.qty), 0) AS total_returned
+        `SELECT COALESCE(SUM(ri.qty), 0) AS total_returned, COALESCE(SUM(ri.refund_amount), 0) AS refunded
          FROM return_items ri
          JOIN returns r ON r.id = ri.return_id
          WHERE ri.sale_item_id = ? AND r.deleted_at IS NULL AND ri.deleted_at IS NULL`,
         [saleItemId],
       );
       const alreadyReturned = Number(returnedStats[0]?.['total_returned'] || 0);
+      prior.set(saleItemId, { qty: alreadyReturned, refunded: z.number().int().parse(returnedStats[0]?.refunded) });
       const requested = requestedQtys[saleItemId]!;
 
       if (alreadyReturned + requested > Number(si['qty'])) {
@@ -161,8 +176,11 @@ export class ReturnRepo {
         throw new Error(`Variant mismatch for sale item ${line.sale_item_id}`);
       }
 
-      // SPEC §8.5 refund_amount per line = round(net_total x qty_returned / qty_sold)
-      const refundAmount = calcRefundAmount(si.net_total, line.qty, si.qty);
+      const previous = prior.get(line.sale_item_id)!;
+      const cumulative = calcRefundAmount(si.net_total, previous.qty + line.qty, si.qty);
+      const balance = addMoney(cumulative, -previous.refunded);
+      // Historical split refunds may already exceed today's cumulative entitlement.
+      const refundAmount = si.net_total < 0 ? Math.min(0, balance) : Math.max(0, balance);
       totalRefund = addMoney(totalRefund, refundAmount);
 
       const retItem: ReturnItem = {
@@ -269,6 +287,7 @@ export class ReturnRepo {
           WHERE si.id = ? AND si.sale_id = ? AND si.shop_id = ?
             AND s.shop_id = si.shop_id AND si.variant_id = ?
             AND si.deleted_at IS NULL AND s.deleted_at IS NULL
+            AND ? = (SELECT COALESCE(SUM(qty), 0) FROM return_items WHERE sale_item_id = si.id)
             AND si.qty >= ? + COALESCE((SELECT SUM(qty) FROM return_items WHERE sale_item_id = si.id), 0)
         ) THEN 1 ELSE 0 END`,
       params: [
@@ -277,6 +296,7 @@ export class ReturnRepo {
         validatedInput.sale_id,
         validatedInput.shop_id,
         line.variant_id,
+        prior.get(line.sale_item_id)!.qty,
         line.qty,
       ],
     }));

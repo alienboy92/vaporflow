@@ -661,6 +661,80 @@ describe('Phase 4: Products, Variants, and Stock Workflows', () => {
     expect(removedRow[0]!.deleted_at).not.toBeNull();
   });
 
+  it('returns filter-chip inventory counts and category names', async () => {
+    const categoryId = uuidv7();
+    await categoryRepo.save({
+      id: categoryId,
+      shop_id: shopId,
+      name: 'Pod Systems',
+      sort_order: 0,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null,
+      device_id: deviceId,
+      dirty: 1,
+      server_updated_at: null,
+    });
+
+    const productId = uuidv7();
+    const healthy = uuidv7();
+    const low = uuidv7();
+    const out = uuidv7();
+    const negative = uuidv7();
+
+    await productRepo.saveProductWithVariantsAndOpeningStock(
+      { ...mkProduct(productId, 'Pod Kit'), category_id: categoryId },
+      [
+        mkVariant(healthy, productId, 'Healthy', 5),
+        mkVariant(low, productId, 'Low', 5),
+        mkVariant(out, productId, 'Out', 5),
+        mkVariant(negative, productId, 'Negative', 5),
+      ],
+      [
+        { variantId: healthy, qty: 10, unitCost: 100 },
+        { variantId: low, qty: 2, unitCost: 100 },
+        { variantId: out, qty: 0, unitCost: 100 },
+      ],
+      deviceId,
+      now,
+    );
+
+    // A sale movement can push on-hand below zero; adjustments cannot.
+    await stockRepo.addMovement({
+      id: uuidv7(),
+      shop_id: shopId,
+      variant_id: negative,
+      qty_change: -2,
+      type: 'sale',
+      ref_type: 'sale',
+      ref_id: uuidv7(),
+      unit_cost: null,
+      note: null,
+      occurred_at: now,
+      created_at: now,
+      updated_at: now,
+      deleted_at: null,
+      device_id: deviceId,
+      dirty: 1,
+      server_updated_at: null,
+    });
+
+    const rows = await stockRepo.getInventoryList(shopId, 'all');
+    expect(rows).toHaveLength(4);
+    expect(rows.every((row) => row.category_name === 'Pod Systems')).toBe(true);
+
+    // Low excludes out/negative rows, matching the prototype chip semantics.
+    expect(await stockRepo.getInventoryCounts(shopId)).toEqual({
+      all: 4,
+      low: 1,
+      out: 2,
+      negative: 1,
+    });
+    expect((await stockRepo.getInventoryList(shopId, 'low')).map((row) => row.variant_id)).toEqual([
+      low,
+    ]);
+  });
+
   it('asserts full rollback on batch failure', async () => {
     const invalidBatch = [
       { sql: `INSERT INTO shops (id) VALUES ('bad')`, params: [] },

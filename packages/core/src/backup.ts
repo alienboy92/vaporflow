@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DbAdapter } from './db-adapter.js';
+import { APP_VERSION } from './version.js';
 import {
   ShopSchema,
   DeviceSchema,
@@ -12,17 +13,6 @@ import {
   SaleItemSchema,
   ReturnSchema,
   ReturnItemSchema,
-  Shop,
-  Device,
-  Category,
-  Product,
-  Variant,
-  Expense,
-  StockMovement,
-  Sale,
-  SaleItem,
-  Return,
-  ReturnItem,
 } from './types/schemas.js';
 
 export const VfBackupSchema = z.object({
@@ -50,41 +40,25 @@ export type VfBackup = z.infer<typeof VfBackupSchema>;
 export async function exportBackupJson(
   db: DbAdapter,
   shopId: string,
-  appVersion = '1.0.0',
+  appVersion = APP_VERSION,
 ): Promise<string> {
-  const shopRows = await db.query<Shop>('SELECT * FROM shops WHERE id = ?', [shopId]);
-  const deviceRows = await db.query<Device>('SELECT * FROM devices WHERE shop_id = ?', [shopId]);
-  const categoryRows = await db.query<Category>('SELECT * FROM categories WHERE shop_id = ?', [shopId]);
-  const productRows = await db.query<Product>('SELECT * FROM products WHERE shop_id = ?', [shopId]);
-  const variantRows = await db.query<Variant>('SELECT * FROM variants WHERE shop_id = ?', [shopId]);
-  const expenseRows = await db.query<Expense>('SELECT * FROM expenses WHERE shop_id = ?', [shopId]);
-  const stockMovementRows = await db.query<StockMovement>('SELECT * FROM stock_movements WHERE shop_id = ?', [shopId]);
-  const saleRows = await db.query<Sale>('SELECT * FROM sales WHERE shop_id = ?', [shopId]);
-  const saleItemRows = await db.query<SaleItem>('SELECT * FROM sale_items WHERE shop_id = ?', [shopId]);
-  const returnRows = await db.query<Return>('SELECT * FROM returns WHERE shop_id = ?', [shopId]);
-  const returnItemRows = await db.query<ReturnItem>('SELECT * FROM return_items WHERE shop_id = ?', [shopId]);
-
-  const backup: VfBackup = {
-    format_version: 1,
-    app_version: appVersion,
-    exported_at: new Date().toISOString(),
-    shop_id: shopId,
-    tables: {
-      shops: shopRows,
-      devices: deviceRows,
-      categories: categoryRows,
-      products: productRows,
-      variants: variantRows,
-      expenses: expenseRows,
-      stock_movements: stockMovementRows,
-      sales: saleRows,
-      sale_items: saleItemRows,
-      returns: returnRows,
-      return_items: returnItemRows,
-    },
-  };
-
-  return JSON.stringify(backup, null, 2);
+  // A single SQLite statement holds one read snapshot across every table.
+  const tables = VfBackupSchema.shape.tables.shape;
+  const selects = Object.entries(tables).map(([table, schema]) => {
+    const columns = Object.keys(schema.element.shape);
+    const fields = columns.map((column) => `'${column}', ${column}`).join(', ');
+    const owner = table === 'shops' ? 'id' : 'shop_id';
+    return `SELECT '${table}' AS source, json_object(${fields}) AS payload FROM ${table} WHERE ${owner} = ?`;
+  });
+  const rows = z.array(z.object({ source: VfBackupSchema.shape.tables.keyof(), payload: z.string() })).parse(
+    await db.query(selects.join(' UNION ALL '), selects.map(() => shopId)),
+  );
+  const contents: Record<string, unknown[]> = Object.fromEntries(Object.keys(tables).map((name) => [name, []]));
+  for (const row of rows) contents[row.source]!.push(JSON.parse(row.payload) as unknown);
+  return JSON.stringify(VfBackupSchema.parse({
+    format_version: 1, app_version: appVersion, exported_at: new Date().toISOString(),
+    shop_id: shopId, tables: contents,
+  }), null, 2);
 }
 
 export function validateBackupJson(jsonString: string): { success: boolean; data?: VfBackup; error?: string } {
@@ -371,6 +345,10 @@ export async function restoreBackup(db: DbAdapter, backup: VfBackup): Promise<vo
     sql: "INSERT INTO settings(key, value) VALUES('active_shop_id', ?), ('active_device_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     params: [backup.shop_id, activeDevice.id],
   });
+  statements.push({
+    sql: "DELETE FROM settings WHERE key = 'cloud_enrolled_shop_id' AND value <> ?",
+    params: [backup.shop_id],
+  });
   // Counter and data must become visible in the same commit.
   const maxCounter = backup.tables.sales.reduce((max, sale) => {
     const suffix = /-(\d+)$/.exec(sale.receipt_no)?.[1];
@@ -382,7 +360,7 @@ export async function restoreBackup(db: DbAdapter, backup: VfBackup): Promise<vo
     sql: "INSERT INTO settings(key, value) VALUES('receipt_counter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     params: [String(maxCounter)],
   });
-  statements.push({ sql: "DELETE FROM settings WHERE key LIKE 'pull_cursor%' OR key = 'last_sync_at'" });
+  statements.push({ sql: "DELETE FROM settings WHERE key GLOB 'sync_cursor_*' OR key GLOB 'pull_cursor*' OR key = 'last_sync_at'" });
   for (const table of ledgers) {
     statements.push({ sql: `CREATE TRIGGER ${table}_immutable_delete BEFORE DELETE ON ${table}
       BEGIN SELECT RAISE(ABORT, 'Ledger rows are immutable'); END` });

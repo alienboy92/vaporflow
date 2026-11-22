@@ -239,6 +239,7 @@ export interface ProfitAndLoss {
   avg_sale_value: number;
   cash_total: number;
   online_total: number;
+  refunds_total: number;
 }
 
 export interface TopItem {
@@ -246,6 +247,16 @@ export interface TopItem {
   product_name: string;
   variant_name: string;
   value: number;
+}
+
+/** Top-item row with quantity, net revenue and gross profit together. */
+export interface TopItemDetail {
+  variant_id: string;
+  product_name: string;
+  variant_name: string;
+  qty: number;
+  revenue: number;
+  profit: number;
 }
 
 // ---------------------------------------------------------------------------

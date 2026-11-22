@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { reportRange, localDate } from '../dates.js';
 import { addMoney, safeInteger, roundRatio, fromInteger } from '../money.js';
-import { IdSchema, TimestampSchema, ProfitAndLoss, TopItem } from '../types/schemas.js';
+import { IdSchema, TimestampSchema, ProfitAndLoss, TopItem, TopItemDetail } from '../types/schemas.js';
 import { DbAdapter } from '../db-adapter.js';
 /**
  * Report repository (P&L and financial metrics per SPEC §8.10).
@@ -95,6 +95,7 @@ export class ReportRepo {
       avg_sale_value: avgSaleValue,
       cash_total: cashTotal,
       online_total: onlineTotal,
+      refunds_total: totalRefunds,
     };
   }
 
@@ -163,6 +164,50 @@ export class ReportRepo {
       product_name: String(r['product_name']),
       variant_name: String(r['variant_name']),
       value: safeInteger(Number(r['value'])),
+    }));
+  }
+
+  /**
+   * Combined top-items table: quantity, net revenue and gross profit per
+   * variant, ordered by quantity or profit.
+   */
+  async getTopItems(
+    shopId: string,
+    startDate: string,
+    endDate: string,
+    sortBy: 'qty' | 'profit' = 'profit',
+    limit = 10,
+  ): Promise<TopItemDetail[]> {
+    IdSchema.parse(shopId);
+    const { startStr, endStr } = reportRange(startDate, endDate);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 10)
+      throw new Error('Limit must be 1 to 10');
+    if (sortBy !== 'qty' && sortBy !== 'profit') throw new Error('Invalid sort');
+
+    const rows = await this.db.query<Record<string, unknown>>(
+      `SELECT
+         si.variant_id,
+         si.product_name,
+         si.variant_name,
+         SUM(si.qty) AS qty,
+         SUM(si.net_total) AS revenue,
+         SUM(si.net_total - (si.qty * si.unit_cost)) AS profit
+       FROM sale_items si
+       JOIN sales s ON s.id = si.sale_id
+       WHERE si.shop_id = ? AND si.deleted_at IS NULL AND s.sold_at BETWEEN ? AND ?
+       GROUP BY si.variant_id, si.product_name, si.variant_name
+       ORDER BY ${sortBy === 'qty' ? 'qty' : 'profit'} DESC
+       LIMIT ?`,
+      [shopId, startStr, endStr, limit],
+    );
+
+    return rows.map((r) => ({
+      variant_id: String(r['variant_id']),
+      product_name: String(r['product_name']),
+      variant_name: String(r['variant_name']),
+      qty: safeInteger(Number(r['qty'])),
+      revenue: safeInteger(Number(r['revenue'])),
+      profit: safeInteger(Number(r['profit'])),
     }));
   }
 

@@ -72,6 +72,7 @@ export class StockRepo {
       variant_name: string;
       sku: string | null;
       barcode: string | null;
+      category_name: string;
       cost_price: number;
       sale_price: number;
       track_stock: number;
@@ -91,6 +92,7 @@ export class StockRepo {
         v.name AS variant_name,
         v.sku,
         v.barcode,
+        COALESCE(c.name, 'Uncategorized') AS category_name,
         v.cost_price,
         v.sale_price,
         v.track_stock,
@@ -99,6 +101,7 @@ export class StockRepo {
       FROM variants v
       JOIN products p ON p.id = v.product_id
       JOIN shops s ON s.id = v.shop_id
+      LEFT JOIN categories c ON c.id = p.category_id AND c.deleted_at IS NULL
       LEFT JOIN (
         SELECT variant_id, SUM(qty_change) AS on_hand
         FROM stock_movements
@@ -112,7 +115,9 @@ export class StockRepo {
     const params: unknown[] = [shopId, shopId, searchParam, searchParam, searchParam, searchParam, searchParam];
 
     if (filter === 'low') {
-      sql += ` AND COALESCE(sm.on_hand, 0) <= COALESCE(v.low_stock_threshold, s.default_low_stock_threshold, 3)`;
+      // Match the prototype's chip semantics: low means positive stock at or
+      // below the threshold; out/negative rows are reported separately.
+      sql += ` AND COALESCE(sm.on_hand, 0) > 0 AND COALESCE(sm.on_hand, 0) <= COALESCE(v.low_stock_threshold, s.default_low_stock_threshold, 3)`;
     } else if (filter === 'out') {
       sql += ` AND COALESCE(sm.on_hand, 0) <= 0`;
     } else if (filter === 'negative') {
@@ -129,6 +134,7 @@ export class StockRepo {
       variant_name: z.string(),
       sku: z.string().nullable(),
       barcode: z.string().nullable(),
+      category_name: z.string(),
       cost_price: z.number().int(),
       sale_price: z.number().int(),
       track_stock: z.number().int(),
@@ -137,6 +143,50 @@ export class StockRepo {
     });
 
     return readRows(this.db, rowSchema, sql, params);
+  }
+
+  /**
+   * Counts used by the Stock filter chips. Low excludes out/negative rows,
+   * matching the prototype's chip semantics.
+   */
+  async getInventoryCounts(
+    shopId: string,
+  ): Promise<{ all: number; low: number; out: number; negative: number }> {
+    IdSchema.parse(shopId);
+    const rows = await readRows(
+      this.db,
+      z.object({
+        all_count: z.number().int(),
+        low_count: z.number().int(),
+        out_count: z.number().int(),
+        negative_count: z.number().int(),
+      }),
+      `SELECT
+         COUNT(*) AS all_count,
+         COALESCE(SUM(CASE WHEN on_hand > 0 AND on_hand <= threshold THEN 1 ELSE 0 END), 0) AS low_count,
+         COALESCE(SUM(CASE WHEN on_hand <= 0 THEN 1 ELSE 0 END), 0) AS out_count,
+         COALESCE(SUM(CASE WHEN on_hand < 0 THEN 1 ELSE 0 END), 0) AS negative_count
+       FROM (
+         SELECT
+           COALESCE(SUM(m.qty_change), 0) AS on_hand,
+           COALESCE(v.low_stock_threshold, s.default_low_stock_threshold, 3) AS threshold
+         FROM variants v
+         JOIN products p ON p.id = v.product_id AND p.deleted_at IS NULL
+         JOIN shops s ON s.id = v.shop_id
+         LEFT JOIN stock_movements m
+           ON m.variant_id = v.id AND m.shop_id = v.shop_id AND m.deleted_at IS NULL
+         WHERE v.shop_id = ? AND v.deleted_at IS NULL
+         GROUP BY v.id, v.low_stock_threshold, s.default_low_stock_threshold
+       )`,
+      [shopId],
+    );
+    const row = rows[0];
+    return {
+      all: row?.all_count ?? 0,
+      low: row?.low_count ?? 0,
+      out: row?.out_count ?? 0,
+      negative: row?.negative_count ?? 0,
+    };
   }
 
   async addMovement(movement: StockMovement): Promise<void> {
