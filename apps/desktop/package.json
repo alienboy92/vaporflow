@@ -1,5 +1,7 @@
 {
   "name": "@vaporflow/desktop",
+  "description": "Offline-first VaporFlow retail point of sale for Windows",
+  "author": "Abdullah Aaraiz",
   "version": "1.0.0",
   "private": true,
   "type": "module",
