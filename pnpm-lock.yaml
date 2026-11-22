@@ -93,6 +93,9 @@ importers:
       '@capacitor/share':
         specifier: ^6.0.2
         version: 6.0.2(@capacitor/core@6.2.3)
+      '@vaporflow/capacitor-printer':
+        specifier: workspace:*
+        version: link:../../packages/capacitor-printer
       '@vaporflow/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -164,6 +167,12 @@ importers:
       vite:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@22.20.5)
+
+  packages/capacitor-printer:
+    dependencies:
+      '@capacitor/core':
+        specifier: ^6.0.0
+        version: 6.2.3
 
   packages/core:
     dependencies:

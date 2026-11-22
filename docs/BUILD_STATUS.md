@@ -49,4 +49,36 @@ Still NOT RUN (needs physical hardware / wall-clock, cannot run from one machine
 
 Never mark an unrun hardware check as passed.
 
+## Product cleanup — 19 November 2026
+
+Development-only surfaces were removed and the shipped UI was brought to a consistent production state. No schema, sync, money, or stock rules changed; the full automated suite still covers them.
+
+- **Diagnostics removed end-to-end**: deleted the `DbCheck` screen (`packages/app/src/screens/DbCheck.tsx`), `core/src/dev-check.ts`, the Settings "Development Diagnostics" section, the `DiagnosticsAdapter`/`diagnostics` fields in the platform bridge, the desktop main/preload wiring, the mobile entry wiring, and the `build:diagnostics` scripts in the app/mobile packages.
+- **Placeholder code deleted**: removed `screens/Placeholder.tsx` and the unused `printer`/`file` runtime stubs (the SPEC-defined `PrinterAdapter`/`FileAdapter` interfaces remain). The camera-unavailable message now says "not available on this device" instead of naming a phase.
+- **Single version source**: `packages/core/src/version.ts` exports `APP_VERSION = '1.0.0'`; Settings displays it and backup export defaults to it, removing the hand-maintained `0.8.0 (development build)` string.
+- **Currency correctness**: every money surface now uses the shop's `currency_code`/`currency_decimals` — product price ranges and per-unit profit, stock price and movement unit cost, sales list totals/refunds, sale cart totals/change, reports P&L and top-products, expenses, and the receipt modal. Product CSV preview and price labels no longer hard-code `PKR`.
+- **Sample/default data removed**: the stock-in form no longer pre-fills `qty: 10` or the note "Restock shipment"; fields start empty with real placeholders.
+- **UI/UX consistency**: receipt search placeholder matches the `PC1-000001` receipt format; `window.alert` calls in sales, expenses, and the receipt modal became inline errors; the Expenses total card matches the P&L card structure; the "Below stock (negative allowed)" label is clearer; the desktop mobile header now reads "Desktop POS"; phase-number comments were removed from production files and the README no longer advertises placeholder/coming-soon states.
+- **Stale artifacts**: untracked `memory/`, empty build folders, `dist`/`out` output, `*.tsbuildinfo`, and Android Gradle build output were deleted. The generated `apps/mobile/android` project is kept.
+- **Test infrastructure**: the adapter contract now builds its own shop/product/variant fixture and runs `db.migrate()` instead of depending on removed dev fixtures. Automated suites for money, stock, reports, and sync are unchanged.
+
+Verification on 19 November 2026: `pnpm lint` clean, `pnpm typecheck` clean, `pnpm test` → 166 passed, 8 skipped (opt-in hosted/benchmark checks), 0 failed across 27 passing files. The hosted Supabase live suite and physical-device checks listed above remain the only unrun items.
+
+## Printing — 19 November 2026
+
+- **Root cause**: Android's Capacitor WebView does not implement `window.print()`, so the hidden-iframe print path failed on the phone.
+- **Native printer plugin**: new tracked workspace package `packages/capacitor-printer` (Capacitor 6 Android plugin) renders the document in a hidden WebView and hands it to `PrintManager`, opening the system print dialog (including "Save as PDF"). It is registered automatically by `cap sync`; the generated `apps/mobile/android` project stays ignored.
+- **Platform wiring**: `PrinterAdapter` is now part of `PlatformAdapters`. Desktop/web uses the browser print dialog; Android uses the native plugin. Receipts, return receipts, and A4 label sheets all go through `platform.printer`.
+- **Product form clarity**: removed the Manual/Scanner toggle from the create/edit product header; renamed "Threshold Override" to "Low-stock alert at" with the shop default shown in the placeholder; marked SKU as optional with an example and tooltip; added "Units already on hand" help under opening stock.
+
+Verified: `pnpm lint`, `pnpm typecheck`, `pnpm test` (166 passed / 8 skipped), `pnpm --filter @vaporflow/mobile build`, `npx cap sync android`, and `gradlew assembleDebug` → BUILD SUCCESSFUL with `:vaporflow-capacitor-printer` included. On-device print dialog acceptance still needs a device/print service.
+
+## Clear Data — 19 November 2026
+
+- **Settings → Danger Zone → Clear Data**: full local reset. `packages/core/src/reset.ts` (`resetLocalDatabase`) drops every table and view, including `_migrations`, in one `DbAdapter.batch()`, then re-runs `db.migrate()` so the app restarts at the setup wizard. Shop, catalog, stock, sales, returns, expenses, PIN, receipt counter, enrollment and cloud credentials are all removed; the cloud copy and other devices are untouched.
+- **Confirmation**: a modal requires typing `DELETE`; the Android back button closes it; the button is disabled with an explanation while a cloud account is signed in (`sync.email` set). After a successful reset the app clears `localStorage` preferences and reloads.
+- **Tests**: `packages/core/src/reset.test.ts` covers full wipe + schema recreation, restored ledger immutability triggers, and running the reset twice.
+
+Verified: `pnpm lint`, `pnpm typecheck`, `pnpm test` → 169 passed, 8 skipped, 0 failed.
+
 18 November retest — 167 automated tests passed and 8 opt-in checks were skipped in the default run. Three dedicated hosted auth/sync tests passed separately. On the connected SM-A055F, 20 generated barcode fixtures and a repeated-barcode test passed via Android keyboard events. The phone layout audit found a narrow camera button. Repairs and outstanding physical acceptance checks are recorded in the [Phase 8B review](PHASE8B_REVIEW.md) and [Phase 9 review](PHASE9_REVIEW.md).

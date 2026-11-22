@@ -94,16 +94,17 @@ selection as the runner. Neither command installs prerequisites automatically.
 
 The runner builds the shared web app, copies it into the existing mobile `dist`,
 syncs Capacitor, builds the APK, installs it, and launches the app. On the phone,
-verify **VaporFlow**, **Point of Sale — coming soon**, and **Phase 0 — Shell Ready**.
-The debug APK is `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
+confirm that **VaporFlow** opens to first-run setup (or the sales screen if the
+shop is already configured). The debug APK is
+`apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
 Native build outputs, local.properties, and signing files must stay uncommitted.
 
 Verified on Windows with Temurin 17.0.21, Gradle 8.2.1, Platform 34 (revision 3),
-and Build-Tools 34.0.0: the debug APK built, installed, and displayed the placeholder
-on the USB-connected phone. The doctor also passed with Java/SDK environment
-variables unset and correctly rejected a nonexistent device. Initial Gradle/Maven
-downloads can take a long time on a slow connection. Command-line Tools 12.0 may
-warn about metadata from newer SDK packages; those warnings did not block this build.
+and Build-Tools 34.0.0: the debug APK built, installed, and launched on the
+USB-connected phone. The doctor also passed with Java/SDK environment variables
+unset and correctly rejected a nonexistent device. Initial Gradle/Maven downloads
+can take a long time on a slow connection. Command-line Tools 12.0 may warn about
+metadata from newer SDK packages; those warnings did not block this build.
 
 ## Other commands
 
