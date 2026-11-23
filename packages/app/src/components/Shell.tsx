@@ -205,7 +205,7 @@ export function Shell() {
             </button>
           )}
         </header>
-        <UpdateBanner />
+        <UpdateBanner duringSale={location.pathname === '/' || draft.cart.length > 0} />
         <main className="pos-main" key={location.pathname}>
           <Routes>
             <Route path="/" element={<SaleScreen draft={draft} />} />

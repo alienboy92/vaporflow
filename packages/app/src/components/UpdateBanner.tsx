@@ -1,9 +1,9 @@
 import { useUpdates } from '../context/UpdateProvider';
 
-/** Non-blocking update notice shown above the workspace on every screen. */
-export function UpdateBanner() {
+/** Non-blocking update notice deferred while the cashier is selling. */
+export function UpdateBanner({ duringSale }: { duringSale: boolean }) {
   const updates = useUpdates();
-  if (!updates.bannerVisible || !updates.info) return null;
+  if (duringSale || !updates.bannerVisible || !updates.info) return null;
 
   return (
     <div className="update-banner" role="status">
