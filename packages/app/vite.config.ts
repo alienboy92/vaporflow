@@ -4,7 +4,7 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  root: __dirname,
+  root: import.meta.dirname,
   base: './',
   build: {
     outDir: 'dist',
@@ -12,7 +12,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@vaporflow/core': path.resolve(__dirname, '../core/src'),
+      '@vaporflow/core': path.resolve(import.meta.dirname, '../core/src'),
     },
   },
   server: {

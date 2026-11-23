@@ -9,7 +9,7 @@ export async function buildElectron(options = {}) {
     bundle: true,
     platform: 'node',
     target: 'node20',
-    external: ['electron', 'better-sqlite3'],
+    external: ['electron'],
     ...options,
   };
   await build({

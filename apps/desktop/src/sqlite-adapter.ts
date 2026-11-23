@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
+import { DatabaseSync, backup } from 'node:sqlite';
 import {
   applyMigrations,
   BatchSchema,
@@ -12,48 +12,58 @@ import {
 
 /** The production Electron adapter, also exercised by the Electron contract runner. */
 export class ElectronDbAdapter implements DbAdapter {
-  private readonly database: Database.Database;
+  private readonly database: DatabaseSync;
   private migrating: Promise<void> | undefined;
   constructor(
-    filename: string,
+    private readonly filename: string,
     private readonly migrations: readonly MigrationRecord[] = MIGRATIONS,
   ) {
-    this.database = new Database(filename);
-    this.database.pragma('journal_mode = WAL');
-    this.database.pragma('foreign_keys = ON');
+    this.database = new DatabaseSync(filename);
+    this.database.exec('PRAGMA journal_mode = WAL');
+    this.database.exec('PRAGMA foreign_keys = ON');
   }
   async query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
     const input = StatementSchema.parse({ sql, params });
     const statement = this.database.prepare(input.sql);
-    if (statement.reader) return RowsSchema.parse(statement.all(...input.params)) as T[];
+    if (statement.columns().length) return RowsSchema.parse(statement.all(...input.params)) as T[];
     statement.run(...input.params);
     return [];
   }
   async batch(statements: { sql: string; params?: unknown[] }[]): Promise<void> {
     const inputs = BatchSchema.parse(statements);
-    this.database.transaction(() => {
+    this.transaction(() => {
       for (const input of inputs) this.database.prepare(input.sql).run(...input.params);
-    })();
+    });
+  }
+  private transaction(write: () => void) {
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      write();
+      this.database.exec('COMMIT');
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
   }
   migrate(): Promise<void> {
     this.migrating ??= applyMigrations(
       {
         query: (sql) => this.query(sql),
         beforeUpgrade: async () => {
-          if (!this.database.memory) {
-            await this.database.backup(this.database.name + ".pre-upgrade-" + randomUUID() + ".sqlite");
+          if (this.filename !== ':memory:') {
+            await backup(this.database, this.filename + '.pre-upgrade-' + randomUUID() + '.sqlite');
           }
         },
         execute: async (sql) => {
           this.database.exec(sql);
         },
         apply: async (migration) => {
-          this.database.transaction(() => {
+          this.transaction(() => {
             this.database.exec(migration.sql);
             this.database
               .prepare("INSERT INTO _migrations(name,applied_at) VALUES (?,datetime('now'))")
               .run(migration.name);
-          })();
+          });
         },
       },
       this.migrations,

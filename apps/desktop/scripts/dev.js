@@ -5,7 +5,6 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildElectron } from './electron-build.js';
-import { prepareNative } from './native.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appRoot = path.resolve(root, '../../packages/app');
@@ -23,7 +22,6 @@ async function main() {
       { cause },
     );
   }
-  await prepareNative();
   await buildElectron({ sourcemap: true });
   console.log('[dev] Electron main/preload built');
   // Match the Vite CLI's working directory for PostCSS/Tailwind config lookup.
