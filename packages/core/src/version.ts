@@ -1,2 +1,3 @@
 /** Product version shown in Settings and written into exported backups. */
-export const APP_VERSION = '1.0.0';
+import { version } from '../../../apps/desktop/package.json';
+export const APP_VERSION = version;

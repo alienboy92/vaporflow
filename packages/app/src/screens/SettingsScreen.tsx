@@ -638,7 +638,7 @@ export function SettingsScreen() {
                   </div>
                   <div className="flex items-center justify-between text-sm text-slate-600">
                     <span>Last Success:</span>
-                    <span className="font-mono">{sync.status.lastSuccessAt ? new Date(sync.status.lastSuccessAt).toLocaleString() : 'Never'}</span>
+                    <span className="font-mono">{sync.status.lastSuccessAt ? new Date(sync.status.lastSuccessAt).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }) : 'Never'}</span>
                   </div>
                   {sync.status.lastError && (
                     <div className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
@@ -795,7 +795,7 @@ export function SettingsScreen() {
             <span className="vf-sub block">Last checked</span>
             <span className="text-slate-700">
               {updates.lastChecked
-                ? new Date(updates.lastChecked).toLocaleString()
+                ? new Date(updates.lastChecked).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })
                 : 'Not checked yet'}
             </span>
           </div>
@@ -807,6 +807,7 @@ export function SettingsScreen() {
               Version <strong>{updates.info.latestVersion}</strong> is available. Installing it
               keeps your shop data on this device.
             </p>
+            {updates.info.sha256 && <p className="break-all text-xs">Download SHA-256 · {updates.info.sha256}</p>}
             {updates.info.notes && (
               <details>
                 <summary className="cursor-pointer font-semibold">Release notes</summary>
@@ -1064,7 +1065,7 @@ export function SettingsScreen() {
           <div className="vf-modal-card max-w-lg space-y-4 p-6">
             <h3 className="text-xl font-bold text-slate-900">Confirm Backup Restore</h3>
             <p className="vf-sub">
-              You are about to restore backup from <span className="font-mono">{new Date(pendingBackupData.exported_at).toLocaleString()}</span> (App version: {pendingBackupData.app_version}).
+              You are about to restore backup from <span className="font-mono">{new Date(pendingBackupData.exported_at).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}</span> (App version: {pendingBackupData.app_version}).
             </p>
             <div className="p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200">
               ⚠️ Warning: Restoring this backup will replace all current local synced data (products, sales, stock, expenses) with the backup contents. Local device identity and PIN are preserved.

@@ -15,12 +15,13 @@ const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 export const GithubReleaseAssetSchema = z.object({
   name: z.string().min(1),
-  browser_download_url: z.string().url(),
+  browser_download_url: z.string().url().refine(isAllowedExternalUrl),
+  digest: z.string().nullable().optional(),
 });
 
 export const GithubReleaseSchema = z.object({
   tag_name: z.string().min(1),
-  html_url: z.string().url(),
+  html_url: z.string().url().refine(isAllowedExternalUrl),
   body: z.string().nullable().optional(),
   published_at: z.string().nullable().optional(),
   draft: z.boolean().optional(),
@@ -37,6 +38,7 @@ export interface UpdateCheckResult {
   releaseUrl: string;
   /** Platform installer/APK asset, or null when the release has no matching file. */
   downloadUrl: string | null;
+  sha256: string | null;
   notes: string;
   publishedAt: string | null;
 }
@@ -52,7 +54,7 @@ interface ParsedVersion {
  */
 export function parseVersion(input: string): ParsedVersion | null {
   const withoutPrefix = input.trim().replace(/^v/i, '');
-  if (!withoutPrefix) return null;
+  if (!/^(0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){1,2}(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(withoutPrefix)) return null;
   const withoutBuild = withoutPrefix.split('+')[0] ?? '';
   const dashIndex = withoutBuild.indexOf('-');
   const main = dashIndex === -1 ? withoutBuild : withoutBuild.slice(0, dashIndex);
@@ -61,10 +63,11 @@ export function parseVersion(input: string): ParsedVersion | null {
   if (parts.length === 0 || parts.length > 4) return null;
   const core: number[] = [];
   for (const part of parts) {
-    if (!/^\d+$/.test(part)) return null;
+    if (!Number.isSafeInteger(Number(part))) return null;
     core.push(Number(part));
   }
   while (core.length < 3) core.push(0);
+  if (prereleaseText.split('.').some(part => /^0\d+$/.test(part))) return null;
   return { core, prerelease: prereleaseText.split('.').filter(Boolean) };
 }
 
@@ -81,8 +84,8 @@ function comparePrerelease(a: string[], b: string[]): number {
     const leftNumeric = /^\d+$/.test(left);
     const rightNumeric = /^\d+$/.test(right);
     if (leftNumeric && rightNumeric) {
-      const diff = Number(left) - Number(right);
-      if (diff !== 0) return diff < 0 ? -1 : 1;
+      const diff = BigInt(left) - BigInt(right);
+      if (diff !== 0n) return diff < 0n ? -1 : 1;
     } else if (leftNumeric !== rightNumeric) {
       return leftNumeric ? -1 : 1;
     } else if (left !== right) {
@@ -152,12 +155,15 @@ export async function checkForUpdate(
   const latestVersion = release.tag_name.trim().replace(/^v/i, '');
   const comparison = compareVersions(latestVersion, currentVersion);
   if (comparison === null) throw new Error('The latest release has an invalid version tag.');
+  const downloadUrl = pickDownloadUrl(release, platform);
+  const digest = release.assets.find(asset => asset.browser_download_url === downloadUrl)?.digest;
   return {
     available: comparison === 1,
     currentVersion,
     latestVersion,
     releaseUrl: release.html_url,
-    downloadUrl: pickDownloadUrl(release, platform),
+    downloadUrl,
+    sha256: digest && /^sha256:[a-f0-9]{64}$/i.test(digest) ? digest.slice(7) : null,
     notes: (release.body ?? '').trim().slice(0, 2000),
     publishedAt: release.published_at ?? null,
   };
@@ -167,7 +173,7 @@ export async function checkForUpdate(
 export function isAllowedExternalUrl(input: string): boolean {
   try {
     const url = new URL(input);
-    return url.protocol === 'https:' && url.hostname.toLowerCase() === 'github.com';
+    return url.protocol === 'https:' && url.host.toLowerCase() === 'github.com' && !url.username && !url.password;
   } catch {
     return false;
   }

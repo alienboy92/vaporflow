@@ -54,7 +54,7 @@ describe('update version comparison', () => {
   });
 
   it('refuses to advertise updates when a version is unparseable', () => {
-    expect(compareVersions('latest', '1.0.0')).toBeNull();
+    for (const tag of ['latest', '1.0.0-', '1.0.0-beta..2', '1.0.0.1', '01.0.0']) expect(parseVersion(tag)).toBeNull();
     expect(isNewerVersion('latest', '1.0.0')).toBe(false);
     expect(isNewerVersion('2.0.0', '1.9.9')).toBe(true);
   });

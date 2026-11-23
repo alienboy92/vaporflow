@@ -3,10 +3,17 @@ def keys = new Properties()
 if (propsFile.exists()) {
     propsFile.withInputStream { keys.load(it) }
 }
+def releaseVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../../desktop/package.json')).version
+if (!(releaseVersion ==~ /[1-9][0-9]*\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})/)) {
+    throw new GradleException('Expected stable major.minor.patch (minor and patch below 1000)')
+}
+def parts = releaseVersion.tokenize('.').collect { it.toLong() }
+def code = (parts[0] - 1) * 1000000L + parts[1] * 1000L + parts[2] + 1
+if (code > 2100000000L) throw new GradleException('Android versionCode exceeds the platform limit')
 android {
     defaultConfig {
-        versionName '1.0.0'
-        versionCode 1
+        versionName releaseVersion
+        versionCode code.toInteger()
     }
     signingConfigs {
         release {

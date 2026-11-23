@@ -21,14 +21,14 @@ and the matching installer/APK opens in the system browser.
 
 ## Publishing a new version
 
-1. Bump the version in all places that must agree:
-   - `packages/core/src/version.ts` → `APP_VERSION`
-   - `apps/desktop/package.json` → `version`
-   - `apps/mobile/android/app/build.gradle` → `versionCode` (increment) and `versionName`
+1. Increase the stable version in `apps/desktop/package.json`. The renderer and Android consume it. Android derives a strictly increasing code for successive stable versions (1.0.0 = 1, 1.0.1 = 2).
 2. Build the installers:
    ```powershell
    pnpm build:desktop        # produces apps/desktop/out/VaporFlow Setup <version>.exe
-   pnpm android:run          # or your normal signed APK build
+   pnpm --filter @vaporflow/mobile build
+   pnpm --filter @vaporflow/mobile cap:sync
+   . ./scripts/android-env.ps1
+   ./apps/mobile/android/gradlew.bat -p apps/mobile/android :app:assembleRelease
    ```
 3. Create a **published (not draft, not prerelease)** GitHub Release:
    - Tag: `v<version>` (for example `v1.1.0`)

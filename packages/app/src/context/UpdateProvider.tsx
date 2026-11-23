@@ -106,7 +106,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       }
 
       inFlight.current = true;
-      setStatus('checking');
+      if (manual) setStatus('checking');
       if (manual) setError('');
       try {
         const result = await checkForUpdate(fetch, APP_VERSION, platform.platform, UPDATE_REPO);
@@ -121,9 +121,6 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
         if (manual) {
           setStatus('error');
           setError('Could not check for updates. Check your internet connection and try again.');
-        } else {
-          // Keep whatever was already showing; a failed periodic check is not user-facing.
-          setStatus((previous) => (previous === 'checking' ? 'idle' : previous));
         }
       } finally {
         inFlight.current = false;
