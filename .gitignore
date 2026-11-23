@@ -51,3 +51,10 @@ Desktop.ini
 packages/app/dist-types/
 
 /supabase/.temp/
+
+# Generated distribution artifacts
+release/
+*.exe
+*.msi
+*.apk
+*.aab
