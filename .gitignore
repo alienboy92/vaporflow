@@ -47,3 +47,5 @@ keystore.properties
 *.log
 Thumbs.db
 Desktop.ini
+
+packages/app/dist-types/

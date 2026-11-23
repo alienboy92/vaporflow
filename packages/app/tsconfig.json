@@ -19,7 +19,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "composite": true,
-    "outDir": "dist",
+    "outDir": "dist-types",
     "rootDir": "src",
     "paths": {
       "@vaporflow/core": [
