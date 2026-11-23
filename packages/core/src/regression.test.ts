@@ -270,8 +270,8 @@ describe('Phase 1 regression coverage', () => {
     expect(() => TimestampSchema.parse('2026-02-30T00:00:00.000Z')).toThrow();
     await db.migrate('packages/core/migrations');
     const applied = (await db.query('SELECT * FROM _migrations')) as unknown[];
-    // 001_initial, 002_ledger_immutability, 003_receipt_unique
-    expect(applied).toHaveLength(3);
+    // 001_initial, 002_ledger_immutability, 003_receipt_unique, 004_sync_versions
+    expect(applied).toHaveLength(4);
     // Re-running adds nothing: idempotent.
     await db.migrate('packages/core/migrations');
     expect(await db.query('SELECT * FROM _migrations')).toHaveLength(applied.length);

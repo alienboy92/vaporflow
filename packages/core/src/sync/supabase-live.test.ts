@@ -383,6 +383,9 @@ describe('Phase 8B live hosted Supabase acceptance', () => {
 
       // First attempt dies right after the device row is registered.
       class FailOnDevicePush implements SyncTransport {
+        manifest = fx.transport.manifest.bind(fx.transport);
+        fetchRows = fx.transport.fetchRows.bind(fx.transport);
+        writeVersioned = fx.transport.writeVersioned.bind(fx.transport);
         private calls = 0;
         async push(table: string, rows: unknown[]) {
           this.calls++;
@@ -462,7 +465,7 @@ describe('Phase 8B live hosted Supabase acceptance', () => {
     // (An EMPTY push legitimately accepts 0 rows — nothing to authorize.)
     const now = new Date().toISOString();
     await expect(
-      fx.transport.push('devices', [
+      fx.transport.writeVersioned('devices', [
         {
           id: uuidv7(),
           shop_id: fx.shopId,
@@ -470,6 +473,7 @@ describe('Phase 8B live hosted Supabase acceptance', () => {
           updated_at: now,
           deleted_at: null,
           device_id: uuidv7(),
+          base_version: 0,
           name: 'Rogue Device',
           code: 'RX1',
           last_seen_at: now,

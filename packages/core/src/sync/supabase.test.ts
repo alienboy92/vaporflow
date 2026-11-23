@@ -21,12 +21,12 @@ describe('Supabase Client and Transport (Phase 8B)', () => {
 
   it('pushes rows via transport rpc', async () => {
     const mockClient = {
-      rpc: vi.fn().mockResolvedValue({ data: 1, error: null }),
+      rpc: vi.fn().mockResolvedValue({ data: [{status:'ok',row:{id:'1'}}], error: null }),
     } as unknown as SupabaseClient;
     const transport = new SupabaseSyncTransport(mockClient);
     const res = await transport.push('categories', [{ id: '1', shop_id: '2', name: 'Cat' }]);
     expect(res).toEqual({ accepted: 1 });
-    expect(mockClient.rpc).toHaveBeenCalledWith('sync_push', {
+    expect(mockClient.rpc).toHaveBeenCalledWith('sync_write_v2', {
       p_table: 'categories',
       p_rows: [{ id: '1', shop_id: '2', name: 'Cat' }],
     });

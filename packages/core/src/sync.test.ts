@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import { SqliteTestAdapter } from './testing/sqlite-test-adapter.js';
 import { SQLiteSyncServer } from './sync/transport.js';
-import { SyncEngine } from './sync/engine.js';
+import { LegacySyncEngine as SyncEngine } from './testing/legacy-sync-engine.js';
 import { NetworkAdapter } from './adapters/types.js';
 import { SyncTransport } from './sync/types.js';
 import { uuidv7 } from './uuid.js';

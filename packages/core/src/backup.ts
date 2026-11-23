@@ -360,6 +360,8 @@ export async function restoreBackup(db: DbAdapter, backup: VfBackup): Promise<vo
     sql: "INSERT INTO settings(key, value) VALUES('receipt_counter', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     params: [String(maxCounter)],
   });
+  statements.push({sql: 'DELETE FROM sync_versions'}, {sql: 'DELETE FROM sync_attention'},
+    {sql: "DELETE FROM settings WHERE key IN ('cloud_join_shop','cloud_join_identity','cloud_claim_shop','cloud_claim_identity')"});
   statements.push({ sql: "DELETE FROM settings WHERE key GLOB 'sync_cursor_*' OR key GLOB 'pull_cursor*' OR key = 'last_sync_at'" });
   for (const table of ledgers) {
     statements.push({ sql: `CREATE TRIGGER ${table}_immutable_delete BEFORE DELETE ON ${table}

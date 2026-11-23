@@ -1,6 +1,9 @@
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect } from 'vitest';
+import { VersionedSync } from './sync/versioned.js';
+import { SqliteTestAdapter } from './testing/sqlite-test-adapter.js';
+import type { SyncTransport } from './sync/types.js';
 import { uuidv7 } from './uuid.js';
 
 describe('PostgreSQL migration and tenant security', () => {
@@ -85,6 +88,77 @@ describe('PostgreSQL migration and tenant security', () => {
   });
   afterEach(async () => {
     await pg.exec('ROLLBACK; RESET ROLE');
+  });
+
+  async function upgrade() {
+    await pg.exec('RESET ROLE');
+    for (const file of readdirSync('supabase/migrations').filter(file => file.endsWith('.sql') && !file.startsWith('00001')).sort()) {
+      await pg.exec(readFileSync('supabase/migrations/' + file, 'utf8').replace(/^BEGIN;|COMMIT;\s*$/g, ''));
+    }
+    await identity(owner);
+  }
+  it('resolves edits from two offline SQLite devices through the real versioned SQL functions', async () => {
+    await upgrade();
+    const transport: SyncTransport = {
+      push: async () => { throw new Error('Legacy push'); },
+      pull: async (t,s,ts,id,n) => (await pg.query<{data:unknown[]}>('SELECT sync_pull($1,$2,$3,$4,$5) AS data',[t,s,ts,id,n])).rows[0]!.data,
+      manifest: async (t,s,id,n) => (await pg.query('SELECT * FROM sync_manifest_v2($1,$2,$3,$4)',[t,s,id,n])).rows,
+      fetchRows: async (t,s,ids) => (await pg.query<{data:unknown[]}>('SELECT sync_rows_v2($1,$2,$3) AS data',[t,s,ids])).rows[0]!.data,
+      writeVersioned: async (t,rows) => (await pg.query<{data:unknown}>('SELECT sync_write_v2($1,$2) AS data',[t,JSON.stringify(rows)])).rows[0]!.data,
+    };
+    const a = new SqliteTestAdapter(), b = new SqliteTestAdapter();
+    try {
+      await a.migrate(); await b.migrate();
+      const first = new VersionedSync(a,transport,shop), second = new VersionedSync(b,transport,shop);
+      await first.run(); await second.run();
+      expect(await a.query('SELECT id FROM shops')).toEqual([{id:shop}]);
+      for(const mine of [true,false]) {
+        await a.query("UPDATE shops SET name=?, dirty=1,updated_at='2026-11-15T13:00:00.000Z'", [mine?'A1':'A2']);
+        await b.query("UPDATE shops SET name=?, dirty=1,updated_at='2026-11-15T11:00:00.000Z'", [mine?'B1':'B2']);
+        await first.run(); await second.run();
+        const issues = await second.problems();
+        expect(issues).toHaveLength(1);
+        expect(issues[0]!.kind).toBe('conflict');
+        await second.resolve('shops',shop,issues[0]!.version!,mine);
+        await second.run(); await first.run();
+        expect(await a.query('SELECT name,dirty FROM shops')).toEqual([{name:mine?'B1':'A2',dirty:0}]);
+        expect(await b.query('SELECT name,dirty FROM shops')).toEqual(await a.query('SELECT name,dirty FROM shops'));
+      }
+    } finally { a.close(); b.close(); }
+  });
+  it('replays offline stock movements once and refuses a changed ledger identity', async () => {
+    const {variant} = await catalog();
+    await upgrade();
+    const movement = { ...base(), base_version:0, variant_id:variant.id,qty_change:5,type:'opening',ref_type:null,ref_id:null,unit_cost:null,note:null,occurred_at:time };
+    const sql = "SELECT sync_write_v2('stock_movements',$1::jsonb)";
+    await pg.query(sql,[JSON.stringify([movement])]);
+    const second = {...movement,id:uuidv7(),device_id:uuidv7(),qty_change:-2,type:'sale'};
+    await pg.query(sql,[JSON.stringify([second])]);
+    await pg.query(sql,[JSON.stringify([second,movement])]);
+    await denied(sql,[JSON.stringify([{...movement,qty_change:12}])]);
+    expect((await pg.query('SELECT on_hand::int FROM v_stock_on_hand')).rows).toEqual([{on_hand:3}]);
+    await denied("SELECT sync_push('stock_movements','[]')");
+  });
+  it('keeps stale edits and tombstones from winning under either clock skew', async () => {
+    await upgrade();
+    const row = { ...base(), name: 'Initial', sort_order: 1 };
+    async function write(baseVersion: number, name: string, deleted: boolean, hour: number) {
+      const payload = { ...row, name, deleted_at: deleted ? time : null,
+        updated_at: new Date(Date.parse(time) + hour * 3600000).toISOString(), base_version: baseVersion };
+      return (await pg.query<{result: {status: string, row: {row_version: number, name: string}}[]}>(
+        "SELECT sync_write_v2('categories', $1::jsonb) AS result", [JSON.stringify([payload])]
+      )).rows[0]!.result[0]!;
+    }
+    expect((await write(0,'Initial',false,1)).row.row_version).toBe(1);
+    expect((await write(1,'Slow',false,-1)).row.row_version).toBe(2);
+    expect((await write(1,'Fast',false,1)).status).toBe('conflict');
+    expect((await write(1,'Fast',true,1)).status).toBe('conflict');
+    expect((await write(2,'Slow',true,-1)).row.row_version).toBe(3);
+    expect((await write(2,'Restore',false,1)).status).toBe('conflict');
+    const manifest = await pg.query<{id: string, row_version: number}>("SELECT * FROM sync_manifest_v2('categories',$1,null,500)", [shop]);
+    expect(manifest.rows).toEqual([{id: row.id,row_version:3}]);
+    await identity(other);
+    expect((await pg.query("SELECT * FROM sync_manifest_v2('categories',$1,null,500)", [shop])).rows).toEqual([]);
   });
 
   it('claims a new shop, is retry-safe, and accepts older real local details', async () => {

@@ -11,6 +11,8 @@ import type { DbAdapter } from './adapters/types.js';
 
 /** Dropped in one batch; migrations recreate every object. */
 const RESET_STATEMENTS = [
+  'DROP TABLE IF EXISTS sync_attention',
+  'DROP TABLE IF EXISTS sync_versions',
   'DROP VIEW IF EXISTS v_stock_on_hand',
   'DROP TABLE IF EXISTS return_items',
   'DROP TABLE IF EXISTS returns',

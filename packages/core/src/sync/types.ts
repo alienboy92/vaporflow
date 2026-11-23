@@ -20,6 +20,8 @@ export interface SyncProblem {
   id: string;
   error: string;
   timestamp: string;
+  kind?: 'conflict' | 'quarantine';
+  version?: number;
   row?: unknown;
 }
 
@@ -34,6 +36,10 @@ export interface SyncState {
 }
 
 export interface SyncTransport {
+  writeVersioned?(table: string, rows: unknown[]): Promise<unknown>;
+  manifest?(table: string, shop: string, after: string | null, limit: number): Promise<unknown>;
+  fetchRows?(table: string, shop: string, ids: string[]): Promise<unknown>;
+
   push(
     table: string,
     rows: unknown[],

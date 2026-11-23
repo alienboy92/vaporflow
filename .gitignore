@@ -49,3 +49,5 @@ Thumbs.db
 Desktop.ini
 
 packages/app/dist-types/
+
+/supabase/.temp/

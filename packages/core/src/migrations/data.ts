@@ -12,5 +12,9 @@ export const MIGRATIONS: readonly MigrationRecord[] = [
   {
     "name": "003_receipt_unique.sql",
     "sql": "-- Receipt numbers must be unique among live sales. The per-device counter is incremented\n-- inside the completeSale batch; this index makes a lost concurrent race fail loudly\n-- (the whole batch rolls back and no counter number is consumed) instead of writing\n-- duplicate receipt numbers. Stored counter value means \"last-used\"; next = value + 1.\nCREATE UNIQUE INDEX idx_sales_receipt_no_unique ON sales(shop_id, receipt_no) WHERE deleted_at IS NULL;\n"
+  },
+  {
+    "name": "004_sync_versions.sql",
+    "sql": "CREATE TABLE sync_versions (\n  shop_id TEXT NOT NULL, table_name TEXT NOT NULL, row_id TEXT NOT NULL, version INTEGER NOT NULL,\n  PRIMARY KEY (shop_id, table_name, row_id)\n);\nCREATE TABLE sync_attention (\n  shop_id TEXT NOT NULL, table_name TEXT NOT NULL, row_id TEXT NOT NULL,\n  kind TEXT NOT NULL CHECK(kind IN ('conflict','quarantine')),\n  version INTEGER NOT NULL, payload TEXT NOT NULL, reason TEXT NOT NULL, received_at TEXT NOT NULL,\n  PRIMARY KEY (shop_id, table_name, row_id, kind, version)\n);\nCREATE UNIQUE INDEX sync_conflict_identity ON sync_attention(shop_id,table_name,row_id) WHERE kind='conflict';\n"
   }
 ];

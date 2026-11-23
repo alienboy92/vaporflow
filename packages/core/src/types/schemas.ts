@@ -31,7 +31,7 @@ export const ShopSchema = SyncColumnsSchema.extend({
     .refine((val) => !val || val.length <= 200000, 'Logo base64 exceeds max size (~150KB)'),
   show_logo_on_receipt: z.number().int().min(0).max(1),
   currency_code: z.string().default('PKR'),
-  currency_decimals: z.number().int().default(0),
+  currency_decimals: z.number().int().nonnegative().default(0),
   receipt_footer: z.string().default('Thank you for shopping with us'),
   default_low_stock_threshold: z.number().int().min(0).default(3),
 });
