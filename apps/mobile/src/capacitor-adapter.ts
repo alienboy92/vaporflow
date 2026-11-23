@@ -88,6 +88,12 @@ export class CapacitorDbAdapter implements DbAdapter {
       await applyMigrations(
         {
           query: async (sql) => (await db.query(sql)).values ?? [],
+          beforeUpgrade: async () => {
+            const databases = RowsSchema.parse((await db.query('PRAGMA database_list')).values);
+            const file = databases.find((row) => row.name === 'main')?.file;
+            if (typeof file !== 'string') throw new Error('Could not locate the database for backup.');
+            if (file) await db.run('VACUUM INTO ?', [file + '.pre-upgrade-' + crypto.randomUUID() + '.sqlite'], false);
+          },
           execute: async (sql) => {
             await db.execute(sql);
           },

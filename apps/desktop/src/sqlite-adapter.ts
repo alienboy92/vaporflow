@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import {
   applyMigrations,
@@ -38,6 +39,11 @@ export class ElectronDbAdapter implements DbAdapter {
     this.migrating ??= applyMigrations(
       {
         query: (sql) => this.query(sql),
+        beforeUpgrade: async () => {
+          if (!this.database.memory) {
+            await this.database.backup(this.database.name + ".pre-upgrade-" + randomUUID() + ".sqlite");
+          }
+        },
         execute: async (sql) => {
           this.database.exec(sql);
         },
