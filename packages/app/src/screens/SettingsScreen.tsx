@@ -1,3 +1,4 @@
+import { ScannerSettings } from '../components/ScannerSettings';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb, usePlatform } from '../context/DbProvider';
 import {
@@ -61,6 +62,7 @@ export function SettingsScreen() {
   const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [localCopies, setLocalCopies] = useState<Record<string,unknown>>({});
   const [cloudMessage, setCloudMessage] = useState('');
   const [cloudError, setCloudError] = useState('');
   const [copiedShopId, setCopiedShopId] = useState(false);
@@ -665,6 +667,21 @@ export function SettingsScreen() {
                         <div key={idx} className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800">
                           <div>
                             <strong>{p.table}</strong> ({p.id.slice(0, 8)}...): {p.error}
+                            <details onToggle={event => {
+                              if (event.currentTarget.open && p.kind === 'conflict') {
+                                void sync.localCopy(p).then(row => setLocalCopies(previous => ({...previous,[p.table+p.id]:row}))).catch(() => setCloudError('Could not read the local record.'));
+                              }
+                            }}><summary>Review record</summary>
+                              {p.kind === 'conflict' && <><p>This device</p><pre className="whitespace-pre-wrap break-all">{JSON.stringify(localCopies[p.table+p.id], null, 2)}</pre></>}
+                              <p>Cloud revision {p.version} · {p.timestamp}</p>
+                              <pre className="whitespace-pre-wrap break-all">{JSON.stringify(p.row, null, 2)}</pre>
+                              {p.kind === 'conflict' && <p>Keep mine sends this device’s current edit. Keep theirs replaces it with the cloud revision above.</p>}
+                              {(p.kind === 'conflict' ? (['mine','theirs'] as const) : (['retry'] as const)).map(action =>
+                                <button type="button" className="vf-btn-ghost" disabled={sync.busy} key={action}
+                                  onClick={() => void runCloudAction(() => sync.handleProblem(p, action), 'Review the updated sync status.')}>
+                                  {{mine:'Keep mine',theirs:'Keep theirs',retry:'Retry'}[action]}
+                                </button>)}
+                            </details>
                           </div>
                         </div>
                       ))}
@@ -745,6 +762,7 @@ export function SettingsScreen() {
         </form>
       </section>
 
+      <ScannerSettings />
       <section className="vf-card space-y-3 p-5">
         <h2 className="vf-title">Application Information</h2>
         <div className="space-y-1 text-sm text-slate-600">

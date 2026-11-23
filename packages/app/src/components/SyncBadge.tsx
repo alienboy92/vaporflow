@@ -12,9 +12,11 @@ export function SyncBadge() {
       <summary className={status}>
         {isSyncing ? 'Syncing…' : labels[status]}
         {status === 'pending' && ` (${pendingCount})`}
+        {sync.status.problems.length > 0 && ` | ${sync.status.problems.length} records need attention`}
       </summary>
       <div className="sync-panel">
         <strong>Sync status</strong>
+        {sync.status.problems.length > 0 && <Link to="/settings">Review records in Settings</Link>}
         <p>Last sync · {lastSuccessAt ? new Date(lastSuccessAt).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }) : 'Never'}</p>
         <p>Pending changes · {pendingCount}</p>
         {(error || lastError) && <p role="alert">{error || lastError}</p>}
