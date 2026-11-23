@@ -1,6 +1,18 @@
 def propsFile = rootProject.file('keystore.properties')
 def keys = new Properties()
-if (propsFile.exists()) {
+def signingEnv = [
+    storeFile: 'VAPORFLOW_ANDROID_KEYSTORE_PATH',
+    storePassword: 'VAPORFLOW_ANDROID_KEYSTORE_PASSWORD',
+    keyAlias: 'VAPORFLOW_ANDROID_KEY_ALIAS',
+    keyPassword: 'VAPORFLOW_ANDROID_KEY_PASSWORD'
+]
+def useEnvironment = signingEnv.values().any { System.getenv(it) != null }
+if (useEnvironment) {
+    signingEnv.each { property, variable ->
+        def value = System.getenv(variable)
+        if (value) keys.setProperty(property, value)
+    }
+} else if (propsFile.isFile()) {
     propsFile.withInputStream { keys.load(it) }
 }
 def releaseVersion = new groovy.json.JsonSlurper().parse(rootProject.file('../../desktop/package.json')).version
@@ -27,9 +39,9 @@ android {
 }
 gradle.taskGraph.whenReady { graph ->
     if (graph.allTasks.any { it.project == project && it.name in ['packageRelease', 'signReleaseBundle', 'assembleRelease', 'bundleRelease'] }) {
-        if (!propsFile.isFile()) throw new GradleException('keystore.properties missing: see README Release signing')
-        if (!['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].every { keys[it] }) {
-            throw new GradleException('Incomplete keystore.properties: see README Release signing')
+        def missing = signingEnv.findAll { property, variable -> !keys[property] }
+        if (missing) {
+            throw new GradleException('Missing Android release signing inputs. Set ' + missing.values().join(', ') + ' or configure keystore.properties with all signing variables unset.')
         }
     }
 }
