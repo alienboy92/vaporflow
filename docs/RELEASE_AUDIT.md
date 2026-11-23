@@ -212,4 +212,6 @@ A fresh dependency-free Git clone completed `pnpm install --frozen-lockfile`. Se
 
 The remaining release blocker is R3, hosted and physical two-device sync and data-loss acceptance. The earlier printer, physical scanner, signed updates, Android pre-migration recovery and owner license decisions remain outstanding. Keep installers on hold until acceptance evidence is recorded.
 
+On 23 November 2026 the owner reported completing all tests. Individual results and release approval were not supplied with this checkpoint.
+
 VERDICT: NO-GO
