@@ -118,3 +118,8 @@ describe('external URL allow-list', () => {
     expect(isAllowedExternalUrl('not a url')).toBe(false);
   });
 });
+
+it('treats an unpublished first release as a successful check', async () => {
+  const result = await checkForUpdate(responding({}, 404), '1.0.0', 'desktop');
+  expect(result).toMatchObject({ available: false, downloadUrl: null, notes: '' });
+});

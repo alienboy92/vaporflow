@@ -133,10 +133,11 @@ export function githubReleaseApiUrl(repo = DEFAULT_UPDATE_REPO): string {
 export async function fetchLatestRelease(
   fetchImpl: typeof fetch,
   repo = DEFAULT_UPDATE_REPO,
-): Promise<GithubRelease> {
+): Promise<GithubRelease | null> {
   const response = await fetchImpl(githubReleaseApiUrl(repo), {
     headers: { Accept: 'application/vnd.github+json' },
   });
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Update check failed (HTTP ${response.status})`);
   return GithubReleaseSchema.parse(await response.json());
 }
@@ -152,6 +153,11 @@ export async function checkForUpdate(
   repo = DEFAULT_UPDATE_REPO,
 ): Promise<UpdateCheckResult> {
   const release = await fetchLatestRelease(fetchImpl, repo);
+  if (!release) return {
+    available: false, currentVersion, latestVersion: currentVersion,
+    releaseUrl: 'https://github.com/' + repo + '/releases', downloadUrl: null,
+    sha256: null, notes: '', publishedAt: null,
+  };
   const latestVersion = release.tag_name.trim().replace(/^v/i, '');
   const comparison = compareVersions(latestVersion, currentVersion);
   if (comparison === null) throw new Error('The latest release has an invalid version tag.');
