@@ -1,3 +1,4 @@
+import { stripScan, readDelimiters } from '../utils/scanner-capture';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDb, usePlatform } from '../context/DbProvider';
@@ -352,7 +353,7 @@ export function SaleScreen({ draft }: { draft: ReturnType<typeof useSaleDraft> }
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    handleScanQuery(searchQuery);
+    handleScanQuery(stripScan(searchQuery, readDelimiters()));
   }
 
   // Android back button: close the receipt modal first; flag the cart so the

@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { framedScanner } from './scanner-capture';
 
 it('consumes framed scans including Enter and leaves ordinary typing alone', () => {
@@ -12,4 +12,23 @@ it('consumes framed scans including Enter and leaves ordinary typing alone', () 
   }
   for (const k of ['F13', 'x', 'Tab', 'Enter', 'F13', 'x', 'Escape']) expect(key(k)).toBe(true);
   expect(scans).toEqual([code, code, code]);
+});
+
+it('strips configured characters once and completes a framed suffix without Enter', () => {
+  const received: string[] = [];
+  const key = framedScanner(code => received.push(code), () => ({ prefix: 'P:', suffix: '!' }));
+  for (const k of ['F13', ...'P:0001!']) key(k);
+  expect(received).toEqual(['0001']);
+});
+
+it('finishes a framed scan on inactivity without a suffix or Enter', () => {
+  vi.useFakeTimers();
+  try {
+    const received: string[] = [];
+    const key = framedScanner(code => received.push(code), () => ({prefix: 'P', suffix: ''}));
+    for (const k of ['F13', ...'P001']) key(k);
+    vi.advanceTimersByTime(250);
+    expect(received).toEqual(['001']);
+    expect(key('x')).toBe(false);
+  } finally { vi.useRealTimers(); }
 });
