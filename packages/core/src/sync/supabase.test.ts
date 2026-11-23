@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 describe('Supabase Client and Transport (Phase 8B)', () => {
   it('creates supabase client with correct options', () => {
-    const client = createVaporFlowSupabaseClient('https://example.supabase.co', 'anon-key-123');
+    const client = createVaporFlowSupabaseClient('https://example.supabase.co', 'sb_publishable_example');
     expect(client).toBeDefined();
   });
 
@@ -21,15 +21,25 @@ describe('Supabase Client and Transport (Phase 8B)', () => {
 
   it('pushes rows via transport rpc', async () => {
     const mockClient = {
-      rpc: vi.fn().mockResolvedValue({ data: 2, error: null }),
+      rpc: vi.fn().mockResolvedValue({ data: 1, error: null }),
     } as unknown as SupabaseClient;
     const transport = new SupabaseSyncTransport(mockClient);
     const res = await transport.push('categories', [{ id: '1', shop_id: '2', name: 'Cat' }]);
-    expect(res).toEqual({ accepted: 2 });
+    expect(res).toEqual({ accepted: 1 });
     expect(mockClient.rpc).toHaveBeenCalledWith('sync_push', {
       p_table: 'categories',
       p_rows: [{ id: '1', shop_id: '2', name: 'Cat' }],
     });
+  });
+
+  it.each([null, 0, 2, '1'])('rejects incompatible push acknowledgement %s', async data => {
+    const client = { rpc: vi.fn().mockResolvedValue({ data, error: null }) } as unknown as SupabaseClient;
+    await expect(new SupabaseSyncTransport(client).push('sales', [{}])).rejects.toThrow(/acknowledgement/);
+  });
+
+  it('rejects malformed pull pages', async () => {
+    const client = { rpc: vi.fn().mockResolvedValue({ data: null, error: null }) } as unknown as SupabaseClient;
+    await expect(new SupabaseSyncTransport(client).pull('sales', 'shop', null, null)).rejects.toThrow();
   });
 
   it('pulls rows via transport rpc', async () => {
@@ -108,11 +118,4 @@ describe('Supabase Client and Transport (Phase 8B)', () => {
     expect(mockClient.rpc).not.toHaveBeenCalled();
   });
 
-  it('pull returns an empty array when the rpc data is not an array', async () => {
-    const mockClient = {
-      rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
-    } as unknown as SupabaseClient;
-    const transport = new SupabaseSyncTransport(mockClient);
-    await expect(transport.pull('sales', 'shop-1', null, null, 500)).resolves.toEqual([]);
-  });
 });

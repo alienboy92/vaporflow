@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SyncTransport, SYNC_TABLES } from './types.js';
 
@@ -24,7 +25,8 @@ export class SupabaseSyncTransport implements SyncTransport {
       throw new Error(error.message || 'Sync push failed');
     }
 
-    return { accepted: typeof data === 'number' ? data : rows.length };
+    if (data !== rows.length) throw new Error('Unexpected cloud acknowledgement. Check for an app update before retrying.');
+    return { accepted: rows.length };
   }
 
   async pull(
@@ -56,6 +58,6 @@ export class SupabaseSyncTransport implements SyncTransport {
       throw new Error(error.message || 'Sync pull failed');
     }
 
-    return Array.isArray(data) ? data : [];
+    return z.array(z.record(z.string(), z.unknown())).max(limit).parse(data);
   }
 }

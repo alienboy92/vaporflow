@@ -17,6 +17,7 @@ import {
   ShopRepo,
   createVaporFlowSupabaseClient,
   projectUrl,
+  publicClientKey,
   claimShop,
   SupabaseSyncTransport,
   SyncEngine,
@@ -174,13 +175,9 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
   const saveConfig = useCallback(
     async (url: string, anonKey: string) => {
       const trimmedUrl = projectUrl(url);
-      const trimmedKey = anonKey.trim();
-      if (!trimmedKey || /^your-/.test(trimmedKey)) {
-        throw new Error('Enter your Supabase anon (public) key from Project Settings > API.');
-      }
+      const trimmedKey = publicClientKey(anonKey);
       const settingsRepo = new SettingsRepo(db);
-      await settingsRepo.set('supabase_url', trimmedUrl);
-      await settingsRepo.set('supabase_anon_key', trimmedKey);
+      await settingsRepo.setCloudConfig(trimmedUrl, trimmedKey);
       // A new URL/key means a new client: any running engine holds the old
       // transport and must be rebuilt.
       stopEngine();

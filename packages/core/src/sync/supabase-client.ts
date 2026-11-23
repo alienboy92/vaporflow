@@ -12,8 +12,21 @@ export function projectUrl(input: string): string {
   return url.href.replace(/\/$/, '');
 }
 
+export function publicClientKey(input: string): string {
+  const key = input.trim();
+  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) return key;
+  const jwt = /^[A-Za-z0-9_-]+\.([A-Za-z0-9_-]+)\.[A-Za-z0-9_-]+$/.exec(key);
+  if (jwt?.[1]) {
+    try {
+      const payload: unknown = JSON.parse(atob(jwt[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (z.object({ role: z.literal('anon') }).safeParse(payload).success) return key;
+    } catch { /* Malformed credentials are rejected below. */ }
+  }
+  throw new Error('Enter a Supabase publishable key or legacy anon key.');
+}
+
 export function createVaporFlowSupabaseClient(url: string, anonKey: string): SupabaseClient {
-  return createClient(projectUrl(url), anonKey, {
+  return createClient(projectUrl(url), publicClientKey(anonKey), {
     auth: {
       persistSession: true,
       autoRefreshToken: true,

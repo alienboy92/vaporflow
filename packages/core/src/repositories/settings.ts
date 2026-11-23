@@ -22,6 +22,12 @@ export class SettingsRepo {
       [key, value],
     );
   }
+  async setCloudConfig(url: string, key: string): Promise<void> {
+    await this.db.batch([['supabase_url', url], ['supabase_anon_key', key]].map(params => ({
+      sql: 'INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+      params,
+    })));
+  }
   async getAll(): Promise<Record<string, string>> {
     const rows = await readRows(this.db, SettingSchema, 'SELECT key,value FROM settings');
     return Object.fromEntries(
