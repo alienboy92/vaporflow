@@ -16,3 +16,12 @@ Export each device's backup, finish pending sync and stop cloud sync before cuto
 | Printing | Trace the desktop HTML/iframe print dialog, Android plugin WebView/PrintManager and PDF/share paths. Require physical 80 mm and A4 label alignment, real-device save/cancellation and repeated print acceptance on each platform. |
 
 Each implementation starts with a regression that fails against the baseline. Deployment and physical acceptance remain separate release gates.
+
+## Implementation and cutover
+
+1. On a new, empty project run `supabase/migrations/00001_initial.sql` once. On an existing project confirm this baseline is already applied.
+2. With old clients disconnected, run `supabase/migrations/20261123041900_versioned_sync.sql` once as the migration owner. It commits the triggers, version column, scoped RPC grants and legacy upload revocation together. Existing rows start at revision 1. No remote SQL was applied in this session.
+3. Start the updated clients. Their bundled SQLite runner applies `packages/core/migrations/004_sync_versions.sql` after 001–003. It adds the revision and attention tables. A device whose existing edit has no known base uses 0. Differing existing cloud data requires explicit owner resolution. A successful Windows upgrade snapshot was reopened in the native contract test.
+4. In a disposable shop follow the two-device, Android backup and physical acceptance tests in RELEASE_AUDIT.md. Preserve the original database snapshots and exports until counts, movements, receipts, pending writes and conflicts have been checked.
+
+The shipped SyncEngine requires versioned replication. Historical timestamp fixtures are isolated from its execution path. Enrollment stores account/project identity before the owner claim and before the joining device starts its pull. Repeated claims use the same shop UUID. Receipt counter recovery can repeat before the final atomic enrollment marker. Scanner diagnostics and delimiters are local to each device. Electron uses its bundled node:sqlite implementation for WAL transactions and consistent backups.
