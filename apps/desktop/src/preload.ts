@@ -6,9 +6,11 @@ const bridge: DesktopBridge = {
   db: {
     query: (sql, params) => ipcRenderer.invoke('db:query', sql, params),
     batch: (statements) => ipcRenderer.invoke('db:batch', statements),
+    backupForCloudChange: () => ipcRenderer.invoke('db:cloudBackup'),
     migrate: () => ipcRenderer.invoke('db:migrate'),
   },
   app: {
+    openBackupFolder: () => ipcRenderer.invoke('app:openBackupFolder'),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   },
 };

@@ -45,6 +45,7 @@ async function initialize(): Promise<PlatformAdapters> {
           return RowsSchema.parse(await api.db.query(input.sql, input.params)) as T[];
         },
         batch: (statements) => api.db.batch(BatchSchema.parse(statements)),
+        backupForCloudChange: () => api.db.backupForCloudChange!(),
         migrate: () => api.db.migrate(),
       },
       share: {
@@ -55,6 +56,7 @@ async function initialize(): Promise<PlatformAdapters> {
       },
       printer: browserPrinter,
       app: {
+        openBackupFolder: () => api.app.openBackupFolder!(),
         openExternal: (url) => api.app.openExternal(url),
       },
     };

@@ -50,6 +50,6 @@ assert.deepEqual(await launch(), {
   renderer: true,
 });
 console.log(
-  'PASS: packaged renderer/preload/IPC, SQLite rollback, migration and restart persistence. Isolated data:',
+  'PASS: packaged renderer/preload/IPC, SQLite rollback, migration, restart persistence, and both privileged keys rejected with unchanged saved settings. Isolated data:',
   directory,
 );

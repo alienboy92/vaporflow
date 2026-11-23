@@ -1,3 +1,5 @@
+import { Directory, Filesystem } from '@capacitor/filesystem';
+import { backupName } from '@vaporflow/core';
 import {
   CapacitorSQLite,
   SQLiteConnection,
@@ -81,6 +83,26 @@ export class CapacitorDbAdapter implements DbAdapter {
       } catch (error) {
         throw error instanceof Error ? error : new Error(String(error));
       }
+    });
+  }
+  backupForCloudChange(): Promise<string> {
+    return this.serial(async db => {
+      try { await Filesystem.mkdir({directory:Directory.Data,path:'backups',recursive:true}); }
+      catch { await Filesystem.readdir({directory:Directory.Data,path:'backups'}); }
+      const name = backupName();
+      const files = await Filesystem.readdir({directory:Directory.Data,path:'backups'});
+      if(files.files.some(file => file.name === name)) throw Error('Retry the backup in a second.');
+      const {uri} = await Filesystem.getUri({directory:Directory.Data,path:'backups/'+name});
+      const file = decodeURIComponent(new URL(uri).pathname);
+      await db.run('VACUUM INTO ?', [file], false);
+      await db.run('ATTACH DATABASE ? AS verified_backup',[file],false);
+      try {
+        for(const table of ['products','sales']) {
+          const result = await db.query(`SELECT (SELECT count(*) FROM main.${table})=(SELECT count(*) FROM verified_backup.${table}) AS ok`);
+          if(RowsSchema.parse(result.values)[0]?.ok !== 1) throw Error('Backup verification failed.');
+        }
+      } finally { await db.run('DETACH DATABASE verified_backup',[],false); }
+      return file;
     });
   }
   migrate(): Promise<void> {

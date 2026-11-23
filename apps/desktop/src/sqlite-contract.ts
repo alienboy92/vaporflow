@@ -2,7 +2,7 @@ import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { MIGRATIONS } from '@vaporflow/core';
+import { MIGRATIONS, switchConnection } from '@vaporflow/core';
 import {
   adapterContract,
   runMigrationFailureContract,
@@ -34,6 +34,16 @@ async function run(): Promise<void> {
   try {
     await latest.migrate();
     await latest.migrate();
+    const snapshot=await switchConnection(latest,'https://example.invalid','sb_publishable_fixture','keep',()=>latest.backupForCloudChange());
+    assert.ok(snapshot);
+    assert.equal(path.dirname(snapshot),path.join(directory,'backups'));
+    assert.match(path.basename(snapshot),/^vaporflow-backup-\d{4}-\d{2}-\d{2}-\d{6}$/);
+    const readback=new ElectronDbAdapter(snapshot);
+    try {
+      assert.deepEqual(await readback.query("SELECT value FROM settings WHERE key='upgrade-check'"),[{value:'retained'}]);
+      for(const table of ['products','sales']) assert.deepEqual(await readback.query('SELECT count(*) AS n FROM '+table),await latest.query('SELECT count(*) AS n FROM '+table));
+    } finally { readback.close(); }
+    console.log('PASS Electron: verified readable project-change backup and product/sale counts');
     assert.deepEqual(await latest.query("SELECT value FROM settings WHERE key='upgrade-check'"), [{ value: 'retained' }]);
   } finally { latest.close(); }
   const backups = (await readdir(directory)).filter(name => name.includes('.pre-upgrade-'));

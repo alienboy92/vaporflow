@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { mkdirSync, existsSync } from 'node:fs';
+import { backupName } from '@vaporflow/core';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync, backup } from 'node:sqlite';
 import {
@@ -34,6 +37,21 @@ export class ElectronDbAdapter implements DbAdapter {
     this.transaction(() => {
       for (const input of inputs) this.database.prepare(input.sql).run(...input.params);
     });
+  }
+  async backupForCloudChange(): Promise<string> {
+    const directory = path.join(path.dirname(this.filename), 'backups');
+    mkdirSync(directory,{recursive:true});
+    const file = path.join(directory,backupName());
+    if (existsSync(file)) throw Error('A backup with this time already exists. Try again in a second.');
+    this.database.prepare('VACUUM INTO ?').run(file);
+    const copy = new DatabaseSync(file,{readOnly:true});
+    try {
+      for (const table of ['products','sales']) {
+        const sql = 'SELECT count(*) AS total FROM '+table;
+        if(copy.prepare(sql).get()?.total !== this.database.prepare(sql).get()?.total) throw Error('Backup verification failed.');
+      }
+    } finally { copy.close(); }
+    return file;
   }
   private transaction(write: () => void) {
     this.database.exec('BEGIN IMMEDIATE');

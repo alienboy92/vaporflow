@@ -2,6 +2,7 @@ import type { DbAdapter, NetworkAdapter, PrinterAdapter, ScannerAdapter, ShareAd
 
 /** Minimal app-level controls shared by desktop and Android. */
 export interface AppAdapter {
+  openBackupFolder?(): Promise<void>;
   /** Opens an allow-listed HTTPS link in the system browser. */
   openExternal(url: string): Promise<void>;
 }

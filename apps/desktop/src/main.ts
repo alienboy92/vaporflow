@@ -60,6 +60,12 @@ async function start(): Promise<void> {
     guard(event);
     return database!.batch(validateBatch(statements));
   });
+  ipcMain.handle('db:cloudBackup', async event => {guard(event); return database!.backupForCloudChange();});
+  ipcMain.handle('app:openBackupFolder', async event => {
+    guard(event);
+    const error = await shell.openPath(path.join(dataPath,'backups'));
+    if(error) throw Error(error);
+  });
   ipcMain.handle('db:migrate', async (event) => {
     guard(event);
     await database!.migrate();
@@ -98,6 +104,26 @@ async function start(): Promise<void> {
       if (JSON.stringify(migrations.map(row => row.name)) !== ${JSON.stringify(JSON.stringify(MIGRATIONS.map(migration => migration.name)))}) throw new Error('Missing migrations');
       for (let i = 0; i < 100 && !document.body.innerText.includes('First-Run Setup'); i++) await new Promise(resolve => setTimeout(resolve, 50));
       if (!document.body.innerText.includes('First-Run Setup')) throw new Error('Renderer database provider did not initialize');
+      const prior = [{sql:"INSERT OR REPLACE INTO settings VALUES('supabase_url','https://original.invalid')"},{sql:"INSERT OR REPLACE INTO settings VALUES('supabase_anon_key','sb_publishable_fixture')"}];
+      await api.db.batch(prior);
+      const keys = "SELECT key,value FROM settings WHERE key IN ('supabase_url','supabase_anon_key') ORDER BY key";
+      const saved = JSON.stringify(await api.db.query(keys));
+      Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Join an existing shop')).click();
+      await new Promise(resolve=>setTimeout(resolve,50));
+      const setInput=(selector,value)=>{
+        const input=document.querySelector(selector);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+      };
+      setInput('input[type=url]','https://different.invalid');
+      for (const candidate of ['sb_secret_fixture', 'e30.'+btoa(JSON.stringify({role:'service_role'})).replace(/=+$/,'')+'.fixture']) {
+        setInput('input[placeholder^="Paste the anon"]',candidate);
+        document.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+        await new Promise(resolve=>setTimeout(resolve,150));
+        if(document.querySelector('[role=alert]')?.textContent.trim()!=='This key was rejected') throw Error('Missing key rejection');
+        if(JSON.stringify(await api.db.query(keys))!==saved) throw Error('Saved credentials changed');
+      }
+      await api.db.batch([{sql:"DELETE FROM settings WHERE key IN ('supabase_url','supabase_anon_key')"}]);
       return { persisted: before[0]?.value === 'persisted', rolledBack, migrationsVerified: true, renderer: true };
     })()`);
     console.log('VAPORFLOW_SMOKE ' + JSON.stringify(result));

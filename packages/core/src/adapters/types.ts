@@ -1,6 +1,7 @@
 /** Platform adapter interfaces for VaporFlow (SPEC 5) */
 
 export interface DbAdapter {
+  backupForCloudChange?(): Promise<string>;
   query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;
   batch(statements: { sql: string; params?: unknown[] }[]): Promise<void>;
   migrate(): Promise<void>;
