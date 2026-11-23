@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { DbProvider, useDb } from './context/DbProvider';
 import { CloudSyncProvider } from './context/CloudSyncProvider';
-import { ShopRepo } from '@vaporflow/core';
+import { ShopRepo, SettingsRepo } from '@vaporflow/core';
 import { SetupWizard } from './screens/SetupWizard';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/Toast';
@@ -12,6 +12,7 @@ import { globalErrorLogger } from './utils/logger';
 function AppRoot() {
   const db = useDb();
   const [shopConfigured, setShopConfigured] = useState<boolean | null>(null);
+  const [pendingJoin, setPendingJoin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [setupError, setSetupError] = useState(false);
 
@@ -21,7 +22,9 @@ function AppRoot() {
     try {
       const shopRepo = new ShopRepo(db);
       const activeShop = await shopRepo.getActiveShop();
-      setShopConfigured(Boolean(activeShop));
+      const pending = Boolean(await new SettingsRepo(db).get('cloud_join_shop'));
+      setPendingJoin(pending);
+      setShopConfigured(Boolean(activeShop) && !pending);
     } catch (err) {
       globalErrorLogger.log(err);
       setSetupError(true);
@@ -32,6 +35,9 @@ function AppRoot() {
 
   useEffect(() => {
     void checkSetup();
+    const refresh = () => void checkSetup();
+    window.addEventListener('vf-enrolled', refresh);
+    return () => window.removeEventListener('vf-enrolled', refresh);
   }, [checkSetup]);
 
   if (loading) {
@@ -53,7 +59,7 @@ function AppRoot() {
     );
 
   if (!shopConfigured) {
-    return <SetupWizard onComplete={() => setShopConfigured(true)} />;
+    return <SetupWizard pendingJoin={pendingJoin} onComplete={() => setShopConfigured(true)} />;
   }
 
   return (

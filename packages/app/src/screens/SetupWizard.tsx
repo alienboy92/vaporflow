@@ -8,14 +8,15 @@ import { uuidv7 } from '@vaporflow/core';
 import { Icon } from '../components/Icon';
 
 interface SetupWizardProps {
+  pendingJoin?: boolean;
   onComplete: () => void;
 }
 
 type Mode = 'create' | 'join';
 
-export function SetupWizard({ onComplete }: SetupWizardProps) {
+export function SetupWizard({ onComplete, pendingJoin }: SetupWizardProps) {
   const sync = useCloudSync();
-  const [mode, setMode] = useState<Mode>('create');
+  const [mode, setMode] = useState<Mode>(pendingJoin ? 'join' : 'create');
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
@@ -35,6 +36,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             type="button"
             role="tab"
             aria-selected={mode === 'create'}
+            disabled={pendingJoin || sync.busy}
             onClick={() => setMode('create')}
             className={`min-h-11 flex-1 rounded-xl border p-2.5 text-sm font-semibold ${
               mode === 'create'

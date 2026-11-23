@@ -14,6 +14,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { useDb, usePlatform } from './DbProvider';
 import {
   SettingsRepo,
+  SYNC_TABLES,
+  type SyncProblem,
   ShopRepo,
   createVaporFlowSupabaseClient,
   projectUrl,
@@ -23,6 +25,7 @@ import {
   SyncEngine,
   probeShopExists,
   enrollExistingShop,
+  enrollOwnerShop,
   restoreBackup,
   type VfBackup,
 } from '@vaporflow/core';
@@ -60,6 +63,8 @@ interface CloudSyncContextValue {
   /** Second device on an empty device: join an existing cloud shop. */
   joinExistingShop(shopId: string, deviceName: string): Promise<{ deviceCode: string }>;
   syncNow(): Promise<void>;
+  localCopy(problem: SyncProblem): Promise<unknown>;
+  handleProblem(problem: SyncProblem, action: 'mine' | 'theirs' | 'retry'): Promise<void>;
   restore(backup: VfBackup): Promise<void>;
   /** Called by the sale screen after a sale; triggers the debounced sync. */
   saleCompleted(): void;
@@ -153,13 +158,26 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       setEmail(sessionEmail);
       // An enrolled device with a live session resumes syncing on app start —
       // the 8A app-start/network/interval/post-sale triggers take over here.
-      if (sessionEmail && enrolled) {
+      if (all.cloud_join_shop && data.session && platform.network.isOnline()) {
+        const result = await enrollExistingShop(db, new SupabaseSyncTransport(client), platform.network, all.cloud_join_shop, {
+          identity: JSON.stringify([url, data.session.user.id]),
+        });
+        enrolledShopRef.current = all.cloud_join_shop;
+        setEnrolledShopId(all.cloud_join_shop);
+        await adoptEngine(result.engine);
+        window.dispatchEvent(new Event('vf-enrolled'));
+      } else if (all.cloud_claim_shop && data.session && platform.network.isOnline()) {
+        await enrollOwnerShop(db, all.cloud_claim_shop, JSON.stringify([url, data.session.user.id]), id => claimShop(client, id));
+        enrolledShopRef.current = all.cloud_claim_shop;
+        setEnrolledShopId(all.cloud_claim_shop);
+        await startEngineFor(all.cloud_claim_shop);
+      } else if (sessionEmail && enrolled) {
         await startEngineFor(enrolled);
       }
     })().catch((err) => {
       globalErrorLogger.log(err);
     });
-  }, [db, startEngineFor]);
+  }, [db, startEngineFor, adoptEngine, platform]);
 
   // App teardown: no orphaned timers or engines.
   useEffect(() => () => stopEngine(), [stopEngine]);
@@ -254,13 +272,10 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     }
     setBusy(true);
     try {
-      const claimed = await claimShop(client, shop.id);
-      if (!claimed) {
-        throw new Error(
-          'Shop claim denied: this shop ID is already linked to a different cloud account.',
-        );
-      }
-      await new SettingsRepo(db).set('cloud_enrolled_shop_id', shop.id);
+      const {data} = await client.auth.getSession();
+      if (!data.session) throw new Error('Sign in to claim your shop.');
+      const identity = JSON.stringify([await new SettingsRepo(db).get('supabase_url'), data.session.user.id]);
+      await enrollOwnerShop(db, shop.id, identity, id => claimShop(client, id));
       enrolledShopRef.current = shop.id;
       setEnrolledShopId(shop.id);
       await startEngineFor(shop.id);
@@ -291,10 +306,13 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         if (!claimed) {
           throw new Error('Access denied: this cloud account is not a member of that shop.');
         }
+        const {data: auth} = await client.auth.getSession();
+        if (!auth.session) throw new Error('Sign in to resume enrollment.');
+        const identity = JSON.stringify([await new SettingsRepo(db).get('supabase_url'), auth.session.user.id]);
         const result = await enrollExistingShop(db, transport, platform.network, shopId, {
-          deviceName,
+          deviceName, identity,
         });
-        await new SettingsRepo(db).set('cloud_enrolled_shop_id', shopId);
+
         enrolledShopRef.current = shopId;
         setEnrolledShopId(shopId);
         await adoptEngine(result.engine);
@@ -349,6 +367,24 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     claimAndConnect,
     joinExistingShop,
     syncNow,
+    async localCopy(problem) {
+      const table = SYNC_TABLES.find(name => name === problem.table);
+      return table ? engineRef.current?.versioned?.localCopy(table,problem.id) : null;
+    },
+    async handleProblem(problem, action) {
+      const engine = engineRef.current;
+      const table = SYNC_TABLES.find(name => name === problem.table);
+      if (!engine?.versioned || !table) throw new Error('Reconnect to review this record.');
+      setBusy(true);
+      try {
+        await engine.stopAndDrain();
+        if (action === 'retry') await engine.versioned.retry();
+        else if (problem.version !== undefined) await engine.versioned.resolve(table, problem.id, problem.version, action === 'mine');
+      } finally {
+        await adoptEngine(engine);
+        setBusy(false);
+      }
+    },
     async restore(backup) {
       const engine = engineRef.current;
       stopEngine();

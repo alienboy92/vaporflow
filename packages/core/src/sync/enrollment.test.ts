@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import { SqliteTestAdapter } from '../testing/sqlite-test-adapter.js';
 import { SQLiteSyncServer } from './transport.js';
-import { SyncEngine } from './engine.js';
-import { probeShopExists, enrollExistingShop } from './enrollment.js';
+import { LegacySyncEngine as SyncEngine } from '../testing/legacy-sync-engine.js';
+import { probeShopExists, enrollExistingShop as enroll, enrollOwnerShop } from './enrollment.js';
 import type { NetworkAdapter } from '../adapters/types.js';
 import type { SyncTransport } from './types.js';
 import { uuidv7 } from '../uuid.js';
@@ -14,6 +14,10 @@ import { CategoryRepo } from '../repositories/category.js';
 import { ProductRepo } from '../repositories/product.js';
 import { StockRepo } from '../repositories/stock.js';
 import { SaleRepo } from '../repositories/sale.js';
+
+function enrollExistingShop(...[db,transport,network,shop,options]: Parameters<typeof enroll>) {
+  return enroll(db,transport,network,shop,{...options,engineClass:SyncEngine});
+}
 
 class MockNetworkAdapter implements NetworkAdapter {
   constructor(private online = true) {}
@@ -318,6 +322,53 @@ describe('Second-Device Cloud Enrollment (Phase 8B)', () => {
     expect(shop?.id).toBe(shopId);
     const counter = await new SettingsRepo(joinDb).get('receipt_counter');
     expect(counter).toBe('2');
+  });
+
+  it.each([1,2])('resumes an owner claim after stopping at local commit %i', async stopAt => {
+    const settings = new SettingsRepo(ownerDb);
+    const batch = ownerDb.batch.bind(ownerDb);
+    let calls = 0;
+    ownerDb.batch = async statements => {
+      await batch(statements);
+      if (++calls === stopAt) throw new Error('process stopped after commit');
+    };
+    const shops = new Set<string>();
+    const claim = async (id:string) => { shops.add(id); return true; };
+    await expect(enrollOwnerShop(ownerDb,shopId,'owner',claim)).rejects.toThrow('stopped');
+    ownerDb.batch = batch;
+    if (!await settings.get('cloud_enrolled_shop_id')) await enrollOwnerShop(ownerDb,shopId,'owner',claim);
+    expect(await settings.get('cloud_enrolled_shop_id')).toBe(shopId);
+    expect(await settings.get('cloud_claim_shop')).toBeNull();
+    expect([...shops]).toEqual([shopId]);
+  });
+
+  it('recovers an owner claim whose cloud commit succeeded before the response was lost', async () => {
+    const shops = new Set<string>();
+    const claim = async (id: string) => { shops.add(id); return true; };
+    await expect(enrollOwnerShop(ownerDb, shopId, 'project-owner', async id => {
+      await claim(id);
+      throw new Error('lost response');
+    })).rejects.toThrow('lost response');
+    const settings = new SettingsRepo(ownerDb);
+    expect(await settings.get('cloud_claim_shop')).toBe(shopId);
+    await expect(enrollOwnerShop(ownerDb, shopId, 'other-account', claim)).rejects.toThrow();
+    await enrollOwnerShop(ownerDb, shopId, 'project-owner', claim);
+    await enrollOwnerShop(ownerDb, shopId, 'project-owner', claim);
+    expect([...shops]).toEqual([shopId]);
+    expect(await settings.get('cloud_enrolled_shop_id')).toBe(shopId);
+    expect(await settings.get('cloud_claim_shop')).toBeNull();
+  });
+  it('resumes after the shop page committed and the process stopped', async () => {
+    const interrupted: SyncTransport = {
+      push: server.push.bind(server),
+      pull: (table, ...args) => table === 'categories' ? Promise.reject(new Error('process stopped')) : server.pull(table, ...args),
+    };
+    await expect(enrollExistingShop(joinDb, interrupted, networkJoin, shopId)).rejects.toThrow('process stopped');
+    expect((await new ShopRepo(joinDb).getActiveShop())?.id).toBe(shopId);
+    const id = await new SettingsRepo(joinDb).get('active_device_id');
+    const result = await enrollExistingShop(joinDb, server, networkJoin, shopId);
+    expect(result.deviceId).toBe(id);
+    expect(await new SettingsRepo(joinDb).get('cloud_enrolled_shop_id')).toBe(shopId);
   });
 
   it('generates a code that does not collide with cloud device codes', async () => {

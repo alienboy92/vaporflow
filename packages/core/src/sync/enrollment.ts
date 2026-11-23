@@ -69,8 +69,10 @@ export async function recoverReceiptCounter(db: DbAdapter): Promise<void> {
 export interface EnrollOptions {
   /** Human label for the new device row (e.g. "Counter Phone"). */
   deviceName?: string;
+  identity?: string;
   /** Passed through to the engine (injectable clock/timers for tests). */
   engineOptions?: SyncEngineOptions;
+  engineClass?: typeof SyncEngine;
 }
 
 /**
@@ -85,13 +87,16 @@ export async function enrollExistingShop(
   shopId: string,
   options: EnrollOptions = {},
 ): Promise<EnrollmentResult> {
-  // Empty-device guard: enrollment must never merge into an existing local
-  // shop — that path is claim/first-device, not join.
-  const existingShops = await db.query<{ c: number }>('SELECT COUNT(*) AS c FROM shops');
-  if ((existingShops[0]?.c ?? 0) > 0) {
-    throw new Error(
-      'This device already has a local shop. Joining an existing cloud shop is only available on an empty device.',
-    );
+  const settingsRepo = new SettingsRepo(db);
+  const settings = await settingsRepo.getAll();
+  const identity = options.identity ?? shopId;
+  const pending = settings.cloud_join_shop;
+  if (pending && (pending !== shopId || settings.cloud_join_identity !== identity)) {
+    throw new Error('Resume enrollment with the original shop and cloud account.');
+  }
+  const existing = await db.query<{id:string}>('SELECT id FROM shops');
+  if (existing.some(row => row.id !== shopId) || (existing.length && !pending)) {
+    throw new Error('This device already has a local shop.');
   }
   // syncNow() no-ops silently when offline, which would otherwise let an
   // enrollment "succeed" with nothing pulled — reject it loudly instead.
@@ -99,7 +104,13 @@ export async function enrollExistingShop(
     throw new Error('You are offline. Reconnect to the internet and try joining again.');
   }
 
-  const settingsRepo = new SettingsRepo(db);
+  if (!pending) {
+    await db.batch([
+      {sql:"INSERT OR REPLACE INTO settings VALUES('cloud_join_shop',?)",params:[shopId]},
+      {sql:"INSERT OR REPLACE INTO settings VALUES('cloud_join_identity',?)",params:[identity]},
+      {sql:"INSERT OR REPLACE INTO settings VALUES('active_device_id',?)",params:[uuidv7()]},
+    ]);
+  }
 
   // Reuse the device registered by a previous (interrupted) attempt, or
   // register a new one with a code unique across every cloud device.
@@ -130,7 +141,7 @@ export async function enrollExistingShop(
     if (!code) {
       throw new Error('Could not generate a unique device code; all codes are taken.');
     }
-    const deviceId = uuidv7();
+    const deviceId = previousDeviceId ?? uuidv7();
     const now = new Date().toISOString();
     device = {
       id: deviceId,
@@ -151,11 +162,40 @@ export async function enrollExistingShop(
 
   // Fresh database means null cursors: the first syncNow is the full pull of
   // every synced table (and pushes this device's row).
-  const engine = new SyncEngine(db, transport, network, shopId, options.engineOptions);
-  await engine.syncNow();
+  const Engine = options.engineClass ?? SyncEngine;
+  const engine = new Engine(db, transport, network, shopId, options.engineOptions);
+  try {
+    await engine.syncNow();
+    const status = await engine.getStatus();
+    if (status.status !== 'synced') throw new Error('First sync is incomplete. Resume enrollment to retry.');
+  } catch (error) { engine.stop(); throw error; }
 
   // The pulled sales must never collide with future local receipt numbers.
   await recoverReceiptCounter(db);
 
+  await db.batch([
+    {sql:"INSERT OR REPLACE INTO settings VALUES('cloud_enrolled_shop_id',?)", params:[shopId]},
+    {sql:"DELETE FROM settings WHERE key IN ('cloud_join_shop','cloud_join_identity')"},
+  ]);
   return { engine, deviceId: device.id, deviceCode: device.code };
+}
+
+/** Journal the intended owner before claim_shop can commit remotely. */
+export async function enrollOwnerShop(
+  db: DbAdapter, shopId: string, identity: string, claim: (id: string) => Promise<boolean>,
+) {
+  const settings = new SettingsRepo(db);
+  const current = await settings.getAll();
+  if (current.cloud_claim_shop && (current.cloud_claim_shop !== shopId || current.cloud_claim_identity !== identity)) {
+    throw new Error('Resume this claim using the original shop and cloud account.');
+  }
+  await db.batch([
+    {sql:"INSERT OR REPLACE INTO settings VALUES('cloud_claim_shop',?)",params:[shopId]},
+    {sql:"INSERT OR REPLACE INTO settings VALUES('cloud_claim_identity',?)",params:[identity]},
+  ]);
+  if (!await claim(shopId)) throw new Error('Shop claim denied for this account.');
+  await db.batch([
+    {sql:"INSERT OR REPLACE INTO settings VALUES('cloud_enrolled_shop_id',?)",params:[shopId]},
+    {sql:"DELETE FROM settings WHERE key IN ('cloud_claim_shop','cloud_claim_identity')"},
+  ]);
 }
