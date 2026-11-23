@@ -237,8 +237,9 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     setBusy(true);
     try {
       // Without a session every RPC gets a 401: stop the engine first.
+      const { error } = await client.auth.signOut({ scope: 'local' });
+      if (error) throw error;
       stopEngine();
-      await client.auth.signOut();
       setEmail(null);
     } finally {
       setBusy(false);
@@ -313,7 +314,11 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     setBusy(true);
     try {
       await engine.syncNow();
-      setStatus(await engine.getStatus());
+      const state = await engine.getStatus();
+      setStatus(state);
+      if (state.status === 'offline') throw new Error('Offline. Pending changes will retry when connected.');
+      if (state.status === 'error') throw new Error(state.lastError ?? 'Review sync problems and retry.');
+      if (state.isSyncing || state.pendingCount) throw new Error('Sync is pending. Check the status for progress.');
     } catch (err) {
       // Reflect the failure in the badge (lastError) before propagating.
       try {

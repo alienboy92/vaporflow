@@ -267,8 +267,8 @@ export function ProductsScreen() {
         name: 'Default',
         sku: '',
         barcode: generateEAN13(),
-        cost_price: '0',
-        sale_price: '0',
+        cost_price: '',
+        sale_price: '',
         low_stock_threshold: '',
         opening_stock: '0',
         isNew: true,
@@ -315,8 +315,8 @@ export function ProductsScreen() {
         name: '',
         sku: '',
         barcode: generateEAN13(),
-        cost_price: '0',
-        sale_price: '0',
+        cost_price: '',
+        sale_price: '',
         low_stock_threshold: '',
         opening_stock: '0',
         isNew: true,
@@ -407,14 +407,17 @@ export function ProductsScreen() {
       const openingStocks: { variantId: string; qty: number; unitCost: number; note?: string }[] = [];
 
       for (const [index, vf] of formVariants.entries()) {
-        const cost = parseInt(vf.cost_price, 10);
-        const sale = parseInt(vf.sale_price, 10);
-        const threshold = vf.low_stock_threshold ? parseInt(vf.low_stock_threshold, 10) : null;
-        const openingQty = vf.isNew ? parseInt(vf.opening_stock, 10) || 0 : 0;
-
-        if (isNaN(cost) || cost < 0 || isNaN(sale) || sale < 0) {
-          throw new Error(`Invalid price for variant #${index + 1}. Prices must be non-negative integers.`);
-        }
+        const price = (value: string) => {
+          if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+            throw new Error(`Enter a whole-rupee purchase and selling price for variant #${index + 1}.`);
+          }
+          return Number(value);
+        };
+        const cost = price(vf.cost_price);
+        const sale = price(vf.sale_price);
+        const threshold = vf.low_stock_threshold ? Number(vf.low_stock_threshold) : null;
+        const openingQty = vf.isNew ? Number(vf.opening_stock || 0) : 0;
+        if (!Number.isSafeInteger(openingQty) || openingQty < 0) throw new Error('Opening stock must be a non-negative whole number.');
 
         variants.push({
           id: vf.id,
