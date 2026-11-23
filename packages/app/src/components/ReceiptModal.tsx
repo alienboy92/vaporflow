@@ -93,7 +93,7 @@ export function ReceiptModal({
             </div>
             <div className="flex justify-between">
               <span>Date:</span>
-              <span>{new Date(sale.sold_at).toLocaleString()}</span>
+              <span>{new Date(sale.sold_at).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}</span>
             </div>
             <div className="flex justify-between">
               <span>Payment:</span>
@@ -178,7 +178,7 @@ export function ReceiptModal({
                     className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 font-sans text-xs text-amber-900"
                   >
                     <div className="min-w-0">
-                      <div className="font-bold">{new Date(ret.returned_at).toLocaleString()}</div>
+                      <div className="font-bold">{new Date(ret.returned_at).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}</div>
                       <div className="text-amber-800">
                         Refund via <strong className="uppercase">{ret.refund_method}</strong>
                       </div>

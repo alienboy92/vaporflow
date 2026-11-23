@@ -1,5 +1,8 @@
 import { it, expect } from 'vitest';
 import { SqliteTestAdapter } from './testing/sqlite-test-adapter.js';
+import { ProductRepo } from './repositories/product.js';
+import { SaleRepo } from './repositories/sale.js';
+import { uuidv7 } from './uuid.js';
 import { ReportRepo } from './repositories/report.js';
 import { StockRepo } from './repositories/stock.js';
 
@@ -35,7 +38,26 @@ it.skipIf(!process.env.VAPORFLOW_BENCH)('reports 50,000 sales across 12 months w
     expect(profit).toHaveLength(10);
     expect(inventory).toHaveLength(10000);
     expect(inventory.every((row) => row.on_hand === 5)).toBe(true);
-    console.log(JSON.stringify({ environment: `${process.platform} ${process.version}; Vitest; in-memory SQLite`, reportMs, inventoryMs }));
+    const variantId = '01900000-0000-7000-8002-000000000001';
+    await db.query('UPDATE variants SET barcode = ? WHERE id = ?', ['00001234', variantId]);
+    const barcodeStart = performance.now();
+    const found = await new ProductRepo(db).getVariantByBarcode(shop, '00001234');
+    const barcodeMs = performance.now() - barcodeStart;
+    expect(found?.id).toBe(variantId);
+    const searchStart = performance.now();
+    const matches = inventory.filter(row => row.product_name.toLowerCase().includes('product 1000'));
+    const cachedSearchMs = performance.now() - searchStart;
+    expect(matches.length).toBeGreaterThan(0);
+    const checkoutStart = performance.now();
+    const receipt = await new SaleRepo(db).completeSale({
+      shop_id: shop, device_id: shop, sold_at: stamp, payment_method: 'online',
+      discount_amount: 0, amount_received: null, note: null,
+      lines: [{ variant_id: variantId, product_name: 'Product 1', variant_name: 'Default',
+        qty: 1, list_price: 20, unit_price: 20 }],
+    }, uuidv7(), [uuidv7()], [uuidv7()], stamp);
+    const checkoutMs = performance.now() - checkoutStart;
+    expect(receipt.sale.total).toBe(20);
+    console.log(JSON.stringify({ environment: `${process.platform} ${process.version}; Vitest; in-memory SQLite`, reportMs, inventoryMs, cachedSearchMs, barcodeMs, checkoutMs }));
     expect(reportMs).toBeLessThan(2000);
   } finally { db.close(); }
 }, 120000);

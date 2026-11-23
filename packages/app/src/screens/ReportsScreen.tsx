@@ -56,30 +56,30 @@ export function ReportsScreen() {
   // Compute preset dates
   const updateRangeByPreset = useCallback(
     (next: Exclude<Preset, 'custom'>) => {
-      const now = new Date();
-      const todayStr = localDate(now);
+      const todayStr = localDate(new Date());
+      const now = new Date(todayStr + 'T00:00:00Z');
 
       if (next === 'today') {
         setStartDate(todayStr);
         setEndDate(todayStr);
       } else if (next === 'yesterday') {
         const yest = new Date(now);
-        yest.setDate(yest.getDate() - 1);
+        yest.setUTCDate(yest.getUTCDate() - 1);
         const yestStr = localDate(yest);
         setStartDate(yestStr);
         setEndDate(yestStr);
       } else if (next === 'last7') {
         const start = new Date(now);
-        start.setDate(start.getDate() - 6);
+        start.setUTCDate(start.getUTCDate() - 6);
         setStartDate(localDate(start));
         setEndDate(todayStr);
       } else if (next === 'thisMonth') {
-        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
         setStartDate(localDate(start));
         setEndDate(todayStr);
       } else if (next === 'lastMonth') {
-        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const end = new Date(now.getFullYear(), now.getMonth(), 0);
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+        const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
         setStartDate(localDate(start));
         setEndDate(localDate(end));
       } else {

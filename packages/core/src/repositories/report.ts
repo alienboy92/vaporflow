@@ -241,12 +241,11 @@ export class ReportRepo {
       ),
     );
     const days = new Map<string, { date: string; revenue: number; profit: number }>();
-    const day = new Date(startStr);
-    day.setHours(12, 0, 0, 0);
+    const day = new Date(dateOnlyStart + 'T00:00:00+05:00');
     while (localDate(day) <= dateOnlyEnd) {
       const date = localDate(day);
       days.set(date, { date, revenue: 0, profit: 0 });
-      day.setDate(day.getDate() + 1);
+      day.setUTCDate(day.getUTCDate() + 1);
     }
     for (const event of events) {
       const target = days.get(localDate(new Date(event.at)))!;

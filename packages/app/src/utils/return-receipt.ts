@@ -12,7 +12,7 @@ export function returnReceiptLines(result: ReturnReceipt, shop: Shop): string[] 
   const money = (value: number) => formatMoney(value, shop.currency_decimals, shop.currency_code);
   return [shop.name, shop.address ?? '', shop.phone ?? '', 'RETURN RECEIPT',
     `Return: ${result.ret.id}`, `Original receipt: ${result.sale.receipt_no}`,
-    `Date: ${new Date(result.ret.returned_at).toLocaleString()}`,
+    `Date: ${new Date(result.ret.returned_at).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}`,
     ...result.items.flatMap((item) => {
       const original = result.saleItems.find((line) => line.id === item.sale_item_id);
       if (!original) throw new Error('Original sale line missing from return receipt');

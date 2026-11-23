@@ -1,3 +1,4 @@
+import { ReportRepo } from './repositories/report.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteTestAdapter } from './testing/sqlite-test-adapter.js';
 import { ShopRepo } from './repositories/shop.js';
@@ -115,6 +116,27 @@ describe('Phase 5: Offline Checkout, Receipts, and Counter', () => {
 
   afterEach(() => {
     db.close();
+  });
+
+  it('keeps receipt and PKT profit snapshots after a price change and product retirement', async () => {
+    const soldAt = '2026-11-15T18:30:00.000Z';
+    const saleId = uuidv7();
+    await saleRepo.completeSale({ shop_id: shopId, device_id: deviceId, sold_at: soldAt,
+      payment_method: 'online', amount_received: null, discount_amount: 100, note: null,
+      lines: [{ variant_id: variantId, product_name: 'Original', variant_name: 'Default',
+        qty: 2, list_price: 1000, unit_price: 1000 }],
+    }, saleId, [uuidv7()], [uuidv7()], soldAt);
+    const variant = (await productRepo.getVariantById(variantId))!;
+    await productRepo.saveVariant({ ...variant, cost_price: 800, sale_price: 1500 });
+    await productRepo.softDeleteProduct(variant.product_id, '2026-11-16T00:00:00.000Z');
+    expect((await saleRepo.getSaleById(saleId))?.items[0]).toMatchObject({
+      qty: 2, unit_cost: 500, unit_price: 1000, product_name: 'Original',
+    });
+    const report = new ReportRepo(db);
+    expect(await report.getProfitAndLoss(shopId, '2026-11-15', '2026-11-15')).toMatchObject({
+      net_revenue: 1900, net_cogs: 1000, net_profit: 900,
+    });
+    expect((await report.getProfitAndLoss(shopId, '2026-11-16', '2026-11-16')).sales_count).toBe(0);
   });
 
   it('increments per-device receipt counter sequentially and generates receipt_no (PC1-000001, PC1-000002)', async () => {

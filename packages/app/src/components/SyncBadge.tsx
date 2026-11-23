@@ -15,7 +15,7 @@ export function SyncBadge() {
       </summary>
       <div className="sync-panel">
         <strong>Sync status</strong>
-        <p>Last sync · {lastSuccessAt ? new Date(lastSuccessAt).toLocaleString() : 'Never'}</p>
+        <p>Last sync · {lastSuccessAt ? new Date(lastSuccessAt).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }) : 'Never'}</p>
         <p>Pending changes · {pendingCount}</p>
         {(error || lastError) && <p role="alert">{error || lastError}</p>}
         {sync.enrolledShopId ? (

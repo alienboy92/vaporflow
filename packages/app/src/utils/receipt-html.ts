@@ -17,10 +17,7 @@ function money(shop: Shop, amount: number): string {
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return escapeHtml(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
-    date.getHours(),
-  )}:${pad(date.getMinutes())}`;
+  return new Date(date.getTime() + 5 * 3600000).toISOString().slice(0, 16).replace('T', ' ');
 }
 
 /** Renders one 80mm receipt as a complete HTML document body fragment. */
