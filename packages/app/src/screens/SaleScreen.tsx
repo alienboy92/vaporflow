@@ -296,7 +296,7 @@ export function SaleScreen({ draft }: { draft: ReturnType<typeof useSaleDraft> }
     if (!trimmed) return;
 
     // Check exact barcode match
-    const matchedBarcode = variants.find((v) => v.barcode?.toLowerCase() === trimmed.toLowerCase());
+    const matchedBarcode = variants.find((v) => v.barcode === trimmed);
     if (matchedBarcode) {
       addToCartByVariantId(matchedBarcode.id);
       return;
@@ -329,6 +329,26 @@ export function SaleScreen({ draft }: { draft: ReturnType<typeof useSaleDraft> }
       }, 8000);
     }
   }
+
+  useEffect(() => {
+    const scan = (event: Event) => {
+      if (completedResult || cartOpen || completingRef.current || document.querySelector('dialog[open], .vf-modal')) return;
+      const code: unknown = (event as CustomEvent<unknown>).detail;
+      if (typeof code !== 'string' || !code) return;
+      const matched = variants.find(v => v.barcode === code);
+      if (matched) {
+        setNotFoundQuery('');
+        setError('');
+        addToCartByVariantId(matched.id);
+      } else {
+        setSearchQuery(code);
+        setNotFoundQuery(code);
+        setError('Barcode not found. Create a product with this barcode.');
+      }
+    };
+    window.addEventListener('vf-barcode', scan);
+    return () => window.removeEventListener('vf-barcode', scan);
+  }, [variants, addToCartByVariantId, cartOpen, completedResult]);
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();

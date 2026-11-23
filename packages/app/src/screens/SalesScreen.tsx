@@ -1,3 +1,4 @@
+import { useRecordWindow } from '../utils/use-record-window';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
@@ -254,6 +255,7 @@ export function SalesScreen() {
     dailyTotals.set(d, cur);
   }
 
+  const recordWindow = useRecordWindow(filteredSales);
   if (loading) {
     return <div className="vf-page text-sm text-slate-500">Loading sales history…</div>;
   }
@@ -374,12 +376,12 @@ export function SalesScreen() {
       )}
 
       <div className="sales-workspace">
-        <section aria-label="Sales history" className="space-y-2">
+        <section aria-label="Sales history"><div ref={recordWindow.viewport} style={recordWindow.viewportStyle}><div className="space-y-2" style={recordWindow.padding}>
           {!filteredSales.length && <p className="catalog-empty">No sales match these filters.</p>}
-          {filteredSales.map(sale => {
+          {recordWindow.visible.map((sale, i) => {
             const returns = returnsMap.get(sale.id) ?? [];
             const refunded = returns.reduce((sum, r) => sum + r.refund_amount, 0);
-            return <button key={sale.id} onClick={() => void handleViewReceipt(sale)}
+            return <button key={sale.id} ref={recordWindow.measure} data-index={recordWindow.start + i} onClick={() => void handleViewReceipt(sale)}
               aria-pressed={sale.id === selectedSaleResult?.sale.id} className="receipt-row">
               <span className="min-w-0">
                 <span className="flex flex-wrap items-center gap-1.5">
@@ -387,7 +389,7 @@ export function SalesScreen() {
                   <span className="vf-badge-slate uppercase">{sale.payment_method}</span>
                   {returns.length > 0 && <span className="vf-badge-amber">Returned</span>}
                 </span>
-                <small>{new Date(sale.sold_at).toLocaleString()}</small>
+                <small>{new Date(sale.sold_at).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}</small>
               </span>
               <span className="text-right">
                 <strong>{formatMoney(sale.total, decimals, currency)}</strong>
@@ -395,7 +397,7 @@ export function SalesScreen() {
               </span>
             </button>;
           })}
-        </section>
+        </div></div></section>
       {/* Receipt Modal */}
       {selectedSaleResult && shop && (
         <ReceiptModal

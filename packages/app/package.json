@@ -15,6 +15,7 @@
     "@capacitor/app": "^6.0.0",
     "@capacitor/core": "^6.2.0",
     "@supabase/supabase-js": "^2.119.0",
+    "@tanstack/react-virtual": "3",
     "@vaporflow/core": "workspace:*",
     "@vaporflow/mobile": "workspace:*",
     "react": "^18.3.1",

@@ -187,11 +187,11 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .pick-qty {
-    animation: quantity-added 240ms ease-out;
+    animation: quantity-added 150ms ease-out;
   }
   @keyframes quantity-added {
-    from { transform: scale(1.35); }
-    to { transform: scale(1); }
+    from { opacity: .75; }
+    to { opacity: 1; }
   }
 }
 @media (min-width: 768px) {
@@ -204,4 +204,13 @@
   .pos-shell[data-platform='android'] .pos-header :is(h1, small):not(.hidden) { display: block; }
   .pos-shell[data-platform='android'] .sale-layout { grid-template-columns: 1fr; padding-bottom: 5rem; }
   .pos-shell[data-platform='android'] .pos-main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes vf-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .pos-main, .pos-sheet[open], .vf-toast { animation: vf-enter 170ms ease-out; }
+  button:active:not(:disabled) { transform: scale(.98); }
 }

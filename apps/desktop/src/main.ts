@@ -38,6 +38,7 @@ async function start(): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      devTools: development,
       preload: path.join(dirname, 'preload.cjs'),
     },
   });
@@ -80,7 +81,7 @@ async function start(): Promise<void> {
     app.exit(1);
   });
   await window.loadURL(entryUrl);
-  console.log('[electron] Loaded', window.webContents.getURL());
+  if (development) console.log('[electron] Loaded', window.webContents.getURL());
   if (smokeDirectory) {
     // Real renderer -> sandboxed preload -> validated main IPC. No production fixtures.
     const result: unknown = await window.webContents.executeJavaScript(`(async () => {

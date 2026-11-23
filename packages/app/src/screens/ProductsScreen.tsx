@@ -1,3 +1,4 @@
+import { useRecordWindow } from '../utils/use-record-window';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useDb, usePlatform } from '../context/DbProvider';
@@ -496,6 +497,18 @@ export function ProductsScreen() {
     return matchesName || matchesVariant;
   });
 
+  useEffect(() => {
+    const scan = (event: Event) => {
+      const index = barcodeInputRefs.current.findIndex(el => el && el === document.activeElement);
+      const code: unknown = (event as CustomEvent<unknown>).detail;
+      if (index < 0 || typeof code !== 'string') return;
+      setFormVariants(prev => prev.map((item, i) => i === index ? { ...item, barcode: code } : item));
+      barcodeInputRefs.current[index + 1]?.focus();
+    };
+    window.addEventListener('vf-barcode', scan);
+    return () => window.removeEventListener('vf-barcode', scan);
+  }, []);
+  const recordWindow = useRecordWindow(filteredProducts);
   if (loading) {
     return (
       <div className="vf-page text-sm text-slate-500" role="status">
@@ -579,7 +592,8 @@ export function ProductsScreen() {
 
       {/* Product table */}
       <div className="vf-card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" ref={recordWindow.viewport} style={recordWindow.viewportStyle}>
+          <div style={recordWindow.padding}>
           <table className="record-list vf-table">
             <thead>
               <tr>
@@ -600,7 +614,7 @@ export function ProductsScreen() {
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((p) => {
+                recordWindow.visible.map((p, i) => {
                   const vars = variantsMap[p.id] || [];
                   const cat = categories.find((c) => c.id === p.category_id);
                   const prices = vars.map((v) => v.sale_price);
@@ -622,7 +636,7 @@ export function ProductsScreen() {
                     printableVars.every((v) => globalLabelSelected.includes(v.id));
 
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.id} ref={recordWindow.measure} data-index={recordWindow.start + i}>
                       <td data-label="Label">
                         {printableVars.length > 0 ? (
                           <input
@@ -702,6 +716,7 @@ export function ProductsScreen() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

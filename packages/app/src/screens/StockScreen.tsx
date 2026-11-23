@@ -1,3 +1,4 @@
+import { useRecordWindow } from '../utils/use-record-window';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
 import { StockRepo, ShopRepo, ProductRepo, DeviceRepo, formatMoney } from '@vaporflow/core';
@@ -114,9 +115,9 @@ export function StockScreen() {
   }, [stockInOpen, adjustOpen, historyOpen]);
 
   // Camera scan in Stock In: match the scanned barcode to a variant row.
-  function handleStockInScan(index: number, code: string) {
+  const handleStockInScan = useCallback((index: number, code: string) => {
     const match = allVariants.find(
-      (v) => v.barcode?.toLowerCase() === code.toLowerCase(),
+      (v) => v.barcode === code,
     );
     if (!match) {
       setError(`No product variant found for barcode "${code}".`);
@@ -128,7 +129,7 @@ export function StockScreen() {
         i === index ? { ...item, variantId: match.variant_id, variantLabel: match.label } : item,
       ),
     );
-  }
+  }, [allVariants]);
 
   function handleOpenStockIn(variantId?: string) {
     const selected = allVariants.find(v => v.variant_id === variantId) ?? allVariants[0];
@@ -272,6 +273,18 @@ export function StockScreen() {
     }
   }
 
+  useEffect(() => {
+    const scan = (event: Event) => {
+      const target = document.activeElement;
+      const code: unknown = (event as CustomEvent<unknown>).detail;
+      if (target instanceof HTMLSelectElement && target.dataset.stockScan && typeof code === 'string') {
+        handleStockInScan(Number(target.dataset.stockScan), code);
+      }
+    };
+    window.addEventListener('vf-barcode', scan);
+    return () => window.removeEventListener('vf-barcode', scan);
+  }, [handleStockInScan]);
+  const recordWindow = useRecordWindow(inventory);
   if (loading) {
     return (
       <div className="vf-page text-sm text-slate-500" role="status">
@@ -348,7 +361,8 @@ export function StockScreen() {
 
       {/* Inventory table */}
       <div className="vf-card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" ref={recordWindow.viewport} style={recordWindow.viewportStyle}>
+          <div style={recordWindow.padding}>
           <table className="record-list vf-table">
             <thead>
               <tr>
@@ -369,13 +383,13 @@ export function StockScreen() {
                   </td>
                 </tr>
               ) : (
-                inventory.map((item) => {
+                recordWindow.visible.map((item, i) => {
                   const isOut = item.on_hand <= 0;
                   const isLow = item.on_hand > 0 && item.on_hand <= item.threshold;
                   const isNegative = item.on_hand < 0;
 
                   return (
-                    <tr key={item.variant_id}>
+                    <tr key={item.variant_id} ref={recordWindow.measure} data-index={recordWindow.start + i}>
                       <td data-label="Item / Variant">
                         <div className="font-semibold text-slate-900">
                           {item.variant_name === 'Default'
@@ -454,6 +468,7 @@ export function StockScreen() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 
@@ -499,6 +514,7 @@ export function StockScreen() {
                       <label className="vf-label">Variant</label>
                       <div className="flex gap-2">
                         <select
+                          data-stock-scan={index}
                           value={si.variantId}
                           onChange={(e) => {
                             const vId = e.target.value;
@@ -714,7 +730,7 @@ export function StockScreen() {
                           </td>
                           <td className="text-slate-600">{m.note || '—'}</td>
                           <td className="text-xs text-slate-500">
-                            {new Date(m.occurred_at).toLocaleString()}
+                            {new Date(m.occurred_at).toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })}
                           </td>
                         </tr>
                       ))}

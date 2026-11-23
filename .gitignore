@@ -37,3 +37,13 @@ local.properties
 *.jks
 *.keystore
 keystore.properties
+
+# Local shop data and support logs
+*.sqlite*
+*.db
+*.db-wal
+*.db-shm
+*.vfbackup
+*.log
+Thumbs.db
+Desktop.ini
