@@ -18,9 +18,10 @@ import { registerBackHandler } from '../utils/back-nav';
 import { ReturnReceiptModal } from '../components/ReturnReceiptModal';
 import type { ReturnReceipt } from '../utils/return-receipt';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { PinPrompt } from '../components/PinPrompt';
 import { useToast } from '../components/Toast';
 
-export function SalesScreen() {
+export function SalesScreen({ pinEnabled = false }: { pinEnabled?: boolean }) {
   const db = useDb();
   const toast = useToast();
   const [returnReceipt, setReturnReceipt] = useState<ReturnReceipt | null>(null);
@@ -42,6 +43,8 @@ export function SalesScreen() {
 
   // Return modal state
   const [returningSale, setReturningSale] = useState<{ sale: Sale; items: SaleItem[] } | null>(null);
+  // Sale waiting for the PIN prompt before a return can be initiated.
+  const [pendingReturnSale, setPendingReturnSale] = useState<Sale | null>(null);
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
   const [returnRestocked, setReturnRestocked] = useState<Record<string, boolean>>({});
   const [refundMethod, setRefundMethod] = useState<'cash' | 'online'>('cash');
@@ -148,6 +151,14 @@ export function SalesScreen() {
       globalErrorLogger.log(err);
       setError('Could not open return modal.');
     }
+  }
+
+  function requestReturn(sale: Sale) {
+    if (pinEnabled) {
+      setPendingReturnSale(sale);
+      return;
+    }
+    void openReturnModal(sale);
   }
 
   async function handleSubmitReturn(e: React.FormEvent) {
@@ -405,7 +416,7 @@ export function SalesScreen() {
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 p-3">
               <button
                 className="vf-btn-danger"
-                onClick={() => void openReturnModal(selectedSaleResult.sale)}
+                onClick={() => requestReturn(selectedSaleResult.sale)}
               >
                 Process return
               </button>
@@ -427,6 +438,18 @@ export function SalesScreen() {
       {!selectedSaleResult && <div className="history-empty">Select a receipt to view sale details.</div>}
       </div>
       {returnReceipt && shop && <ReturnReceiptModal result={returnReceipt} shop={shop} onClose={() => setReturnReceipt(null)} />}
+      {pendingReturnSale && (
+        <PinPrompt
+          title="PIN required for return"
+          description="Enter your PIN to start a return."
+          onSuccess={() => {
+            const sale = pendingReturnSale;
+            setPendingReturnSale(null);
+            void openReturnModal(sale);
+          }}
+          onCancel={() => setPendingReturnSale(null)}
+        />
+      )}
       {/* Return Modal */}
       {returningSale && shop && (
         <div className="vf-modal">

@@ -218,7 +218,7 @@ export function ReportsScreen() {
         <div className="report-metrics grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-5">
           <div className="vf-card-pad">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Net Revenue
+              Total Money In
             </div>
             <div className="vf-num mt-1 text-2xl font-bold text-slate-900">
               {fmt(pnl.net_revenue)}
@@ -230,7 +230,7 @@ export function ReportsScreen() {
 
           <div className="vf-card-pad">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Net COGS
+              Total Sale
             </div>
             <div className="vf-num mt-1 text-2xl font-bold text-slate-700">
               {fmt(pnl.net_cogs)}
@@ -240,7 +240,7 @@ export function ReportsScreen() {
 
           <div className="vf-card-pad">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Gross Profit
+              Profit before expenses
             </div>
             <div className="vf-num mt-1 text-2xl font-bold text-emerald-700">
               {fmt(pnl.gross_profit)}
@@ -279,7 +279,7 @@ export function ReportsScreen() {
                 netProfit >= 0 ? 'text-emerald-200/80' : 'text-rose-200/80'
               }`}
             >
-              Gross Profit − Expenses
+              Profit before expenses − Expenses
             </div>
           </div>
         </div>
@@ -321,13 +321,13 @@ export function ReportsScreen() {
         <div className="vf-card-pad lg:col-span-7">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="font-bold text-slate-900">Daily Revenue &amp; Gross Profit</h3>
+              <h3 className="font-bold text-slate-900">Daily Money In &amp; Profit before expenses</h3>
               <p className="vf-sub">{chartCaption}</p>
             </div>
             <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-sm bg-slate-800" />
-                Revenue
+                Money In
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
@@ -360,8 +360,8 @@ export function ReportsScreen() {
                     }}
                   />
                   <Legend />
-                  <Bar dataKey="revenue" name="Revenue" fill="#1e293b" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="profit" name="Gross Profit" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="revenue" name="Money In" fill="#1e293b" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="profit" name="Profit before expenses" fill="#10b981" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -373,7 +373,7 @@ export function ReportsScreen() {
       <section className="vf-card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-3.5">
           <h3 className="font-bold text-slate-900">
-            Top Items by {topSort === 'profit' ? 'Gross Profit' : 'Quantity Sold'}
+            Top Items by {topSort === 'profit' ? 'Profit before expenses' : 'Quantity Sold'}
           </h3>
           <div className="flex gap-1.5">
             <button
@@ -400,8 +400,8 @@ export function ReportsScreen() {
               <tr>
                 <th>Product / Variant</th>
                 <th className="text-right">Units Sold</th>
-                <th className="text-right">Net Revenue</th>
-                <th className="text-right">Gross Profit</th>
+                <th className="text-right">Total Money In</th>
+                <th className="text-right">Profit before expenses</th>
               </tr>
             </thead>
             <tbody>

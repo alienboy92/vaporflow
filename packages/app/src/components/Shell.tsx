@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useDb, usePlatform } from '../context/DbProvider';
 import { StockRepo, ShopRepo, DeviceRepo } from '@vaporflow/core';
 import { ProductsScreen } from '../screens/ProductsScreen';
@@ -13,6 +13,7 @@ import { Icon } from './Icon';
 import { SyncBadge } from './SyncBadge';
 import { Sheet } from './Sheet';
 import { LockScreen } from './LockScreen';
+import { PinGate } from './PinGate';
 import { UpdateBanner } from './UpdateBanner';
 import { useSecurity } from './use-security';
 import { globalErrorLogger } from '../utils/logger';
@@ -25,6 +26,7 @@ export function Shell() {
   const db = useDb();
   const { platform } = usePlatform();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [lowStockCount, setLowStockCount] = useState(0);
   const [shopName, setShopName] = useState('VaporFlow');
@@ -211,10 +213,32 @@ export function Shell() {
             <Route path="/" element={<SaleScreen draft={draft} />} />
             <Route path="/products" element={<ProductsScreen />} />
             <Route path="/stock" element={<StockScreen />} />
-            <Route path="/sales" element={<SalesScreen />} />
-            <Route path="/reports" element={<ReportsScreen />} />
+            <Route path="/sales" element={<SalesScreen pinEnabled={security.enabled} />} />
+            <Route
+              path="/reports"
+              element={
+                <PinGate
+                  enabled={security.enabled}
+                  section="Reports"
+                  onCancel={() => navigate('/')}
+                >
+                  <ReportsScreen />
+                </PinGate>
+              }
+            />
             <Route path="/expenses" element={<ExpensesScreen />} />
-            <Route path="/settings" element={<SettingsScreen />} />
+            <Route
+              path="/settings"
+              element={
+                <PinGate
+                  enabled={security.enabled}
+                  section="Settings"
+                  onCancel={() => navigate('/')}
+                >
+                  <SettingsScreen />
+                </PinGate>
+              }
+            />
           </Routes>
         </main>
       </div>
