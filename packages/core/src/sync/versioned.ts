@@ -48,6 +48,7 @@ export class VersionedSync {
     row: Row,
     kind: 'conflict' | 'quarantine',
     reason: string,
+    payload: unknown = row,
   ): Statement {
     return {
       sql: `INSERT INTO sync_attention VALUES(?,?,?,?,?,?,?,?) ON CONFLICT
@@ -56,10 +57,10 @@ export class VersionedSync {
       params: [
         this.shop,
         table,
-        String(row.id ?? 'invalid:' + JSON.stringify(row)),
+        String(row.id ?? 'invalid:' + JSON.stringify(payload)),
         kind,
         revision.safeParse(row.row_version).data ?? 0,
-        JSON.stringify(row),
+        JSON.stringify(payload),
         reason,
         this.now().toISOString(),
       ],
@@ -286,10 +287,18 @@ export class VersionedSync {
     }
     for (;;) {
       const page = z
-        .array(object)
+        .array(z.unknown())
         .max(PAGE)
         .parse(await this.transport.pull(table, this.shop, ts, id, PAGE));
-      for (const row of page) {
+      for (const raw of page) {
+        const parsed = object.safeParse(raw);
+        if (!parsed.success) {
+          await this.db.batch([
+            this.attention(table, {}, 'quarantine', 'Expected a cloud row object.', raw),
+          ]);
+          throw new Error('Cannot advance past a row without a valid server cursor.');
+        }
+        const row = parsed.data;
         const position = cursor.safeParse(row);
         if (!position.success) {
           await this.db.batch([
@@ -324,8 +333,9 @@ export class VersionedSync {
   }
   async retry() {
     for (const issue of await this.problems()) {
-      if (issue.kind === 'quarantine')
-        await this.apply(z.enum(SYNC_TABLES).parse(issue.table), object.parse(issue.row));
+      const row = object.safeParse(issue.row);
+      if (issue.kind === 'quarantine' && row.success)
+        await this.apply(z.enum(SYNC_TABLES).parse(issue.table), row.data);
     }
   }
   async localCopy(table: SyncTable, id: string) {

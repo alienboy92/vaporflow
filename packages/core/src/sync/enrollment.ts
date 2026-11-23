@@ -125,7 +125,7 @@ export async function enrollExistingShop(
     const cloudDevices = await transport.pull('devices', shopId, null, null, 500);
     const taken = new Set(
       cloudDevices
-        .map((row) => (row as { code?: unknown }).code)
+        .map((row) => (row as { code?: unknown } | null)?.code)
         .filter((code): code is string => typeof code === 'string'),
     );
     let code = '';

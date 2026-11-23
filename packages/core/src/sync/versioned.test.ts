@@ -130,3 +130,29 @@ it('rolls back cursor advancement when SQLite cannot persist a rejection', async
   await engine({ ...row, currency_decimals: -1 }, true).syncNow();
   expect(await db.query('SELECT version FROM sync_attention')).toEqual([{ version: 1 }]);
 });
+it('keeps an unaddressable pull payload before refusing the cursor', async () => {
+  const transport: SyncTransport = {
+    push: async () => ({ accepted: 0 }),
+    writeVersioned: async () => [],
+    manifest: async () => [],
+    fetchRows: async () => [],
+    pull: async (table) => (table === 'shops' ? [null] : []),
+  };
+  const instance = new SyncEngine(
+    db,
+    transport,
+    { isOnline: () => true, onChange: () => () => {} },
+    shop,
+  );
+  try {
+    await expect(instance.syncNow()).rejects.toThrow();
+  } finally {
+    instance.stop();
+  }
+  expect(await db.query('SELECT kind,payload FROM sync_attention')).toEqual([
+    { kind: 'quarantine', payload: 'null' },
+  ]);
+  expect(await db.query("SELECT * FROM settings WHERE key='sync_cursor_shops_timestamp'")).toEqual(
+    [],
+  );
+});

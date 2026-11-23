@@ -75,6 +75,6 @@ export class SupabaseSyncTransport implements SyncTransport {
       throw new Error(error.message || 'Sync pull failed');
     }
 
-    return z.array(z.record(z.string(), z.unknown())).max(limit).parse(data);
+    return z.array(z.unknown()).max(limit).parse(data);
   }
 }
