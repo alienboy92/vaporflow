@@ -25,3 +25,14 @@ Each implementation starts with a regression that fails against the baseline. De
 4. In a disposable shop follow the two-device, Android backup and physical acceptance tests in RELEASE_AUDIT.md. Preserve the original database snapshots and exports until counts, movements, receipts, pending writes and conflicts have been checked.
 
 The shipped SyncEngine requires versioned replication. Historical timestamp fixtures are isolated from its execution path. Enrollment stores account/project identity before the owner claim and before the joining device starts its pull. Repeated claims use the same shop UUID. Receipt counter recovery can repeat before the final atomic enrollment marker. Scanner diagnostics and delimiters are local to each device. Electron uses its bundled node:sqlite implementation for WAL transactions and consistent backups.
+
+
+## Cloud connection preflight
+
+After the initial and versioned-sync migrations, the owner runs
+`supabase/migrations/20261123042000_cloud_probe.sql` once. It exposes only the
+protocol number to unauthenticated clients. Both Settings and first-device
+connection setup require a successful response before saving credentials.
+After choosing Keep data, sign in to the destination as the owner to claim
+the existing shop ID and start the upload. Physical Android backup and hosted
+project acceptance require the shop's devices and project.

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { HashRouter } from 'react-router-dom';
-import { DbProvider, useDb } from './context/DbProvider';
+import { DbProvider, useDb, usePlatform } from './context/DbProvider';
 import { CloudSyncProvider } from './context/CloudSyncProvider';
 import { ShopRepo, SettingsRepo } from '@vaporflow/core';
 import { SetupWizard } from './screens/SetupWizard';
@@ -11,6 +11,8 @@ import { globalErrorLogger } from './utils/logger';
 
 function AppRoot() {
   const db = useDb();
+  const platform=usePlatform();
+  const [backupPath,setBackupPath]=useState('');
   const [shopConfigured, setShopConfigured] = useState<boolean | null>(null);
   const [pendingJoin, setPendingJoin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -21,6 +23,7 @@ function AppRoot() {
     setSetupError(false);
     try {
       const shopRepo = new ShopRepo(db);
+      setBackupPath(await new SettingsRepo(db).get('last_cloud_backup') ?? '');
       const activeShop = await shopRepo.getActiveShop();
       const pending = Boolean(await new SettingsRepo(db).get('cloud_join_shop'));
       setPendingJoin(pending);
@@ -57,6 +60,10 @@ function AppRoot() {
         </button>
       </main>
     );
+
+  if(backupPath) return <main className="vf-card p-6"><h1>Backup verified</h1><p className="break-all">{backupPath}</p>
+    {platform.app?.openBackupFolder && <button onClick={()=>void platform.app?.openBackupFolder?.()}>Open backup folder</button>}
+    <button onClick={async()=>{await new SettingsRepo(db).set('last_cloud_backup','');setBackupPath('')}}>Continue</button></main>;
 
   if (!shopConfigured) {
     return <SetupWizard pendingJoin={pendingJoin} onComplete={() => setShopConfigured(true)} />;

@@ -63,6 +63,20 @@ export function SettingsScreen() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [localCopies, setLocalCopies] = useState<Record<string,unknown>>({});
+  const [changeStep,setChangeStep]=useState<''|'choose'|'keep'|'delete'>('');
+  const dialogRef=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{if(changeStep && !dialogRef.current?.open) dialogRef.current?.showModal();},[changeStep]);
+  const [typedDelete,setTypedDelete]=useState('');
+  async function saveConnection(choice?:'keep'|'backup'|'delete') {
+    try {
+      setCloudError('');
+      await sync.saveConfig(supabaseUrl,supabaseAnonKey,choice,typedDelete);
+      setChangeStep('');setCloudMessage('Supabase configuration saved.');
+    } catch(error) {
+      if(error instanceof Error && error.message==='CLOUD_CHOICE_REQUIRED') setChangeStep('choose');
+      else setCloudError(error instanceof Error?error.message:'Connection failed.');
+    }
+  }
   const [cloudMessage, setCloudMessage] = useState('');
   const [cloudError, setCloudError] = useState('');
   const [copiedShopId, setCopiedShopId] = useState(false);
@@ -516,12 +530,7 @@ export function SettingsScreen() {
             <button
               type="button"
               disabled={sync.busy}
-              onClick={() =>
-                void runCloudAction(
-                  () => sync.saveConfig(supabaseUrl, supabaseAnonKey),
-                  'Supabase configuration saved.',
-                )
-              }
+              onClick={() => void saveConnection()}
               className="vf-btn-primary min-h-10 px-3.5 text-sm"
             >
               Save Configuration
@@ -529,6 +538,20 @@ export function SettingsScreen() {
             {sync.configured && <span className="text-sm text-green-700 font-medium">Credentials saved ✓</span>}
           </div>
 
+          {changeStep && <dialog ref={dialogRef} onCancel={event=>{event.preventDefault();if(!sync.busy)setChangeStep('')}} className="vf-card fixed inset-0 z-50 m-auto p-6 max-w-md" aria-label="Change cloud connection">
+            {changeStep==='choose' ? <>
+              <p>Changing the cloud project can send this device&apos;s data to the new project or lose it. Choose what to do with the data on this device.</p>
+              <button disabled={sync.busy} onClick={()=>setChangeStep('keep')}>Keep data</button>
+              <button disabled={sync.busy} onClick={()=>void saveConnection('backup')}>Back up, then start fresh</button>
+              <button disabled={sync.busy} onClick={()=>{setTypedDelete('');setChangeStep('delete')}}>Delete data and start fresh</button>
+            </> : changeStep==='keep' ? <>
+              <p>After backup, all existing local shop data will be uploaded to the new project when you sign in.</p>
+              <button disabled={sync.busy} onClick={()=>void saveConnection('keep')}>Confirm upload</button>
+            </> : <><label>Type DELETE to erase this device without a backup<input value={typedDelete} onChange={e=>setTypedDelete(e.target.value)}/></label>
+              <button disabled={sync.busy || typedDelete!=='DELETE'} onClick={()=>void saveConnection('delete')}>Confirm deletion</button></>}
+            {cloudError && <p role="alert">{cloudError}</p>}
+            <button disabled={sync.busy} onClick={()=>{setChangeStep('');setTypedDelete('');setCloudError('')}}>Cancel</button>
+          </dialog>}
           {!sync.email ? (
             <div className="space-y-3 pt-2 border-t">
               <h3 className="font-semibold text-slate-800">Cloud Authentication</h3>

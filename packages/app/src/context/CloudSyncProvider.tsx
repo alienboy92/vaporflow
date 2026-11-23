@@ -18,6 +18,7 @@ import {
   type SyncProblem,
   ShopRepo,
   createVaporFlowSupabaseClient,
+  probeConnection, needsCloudChoice, switchConnection, type CloudChoice,
   projectUrl,
   publicClientKey,
   claimShop,
@@ -54,7 +55,7 @@ interface CloudSyncContextValue {
   status: SyncState;
   /** True while an auth/claim/join/sync action is running. */
   busy: boolean;
-  saveConfig(url: string, anonKey: string): Promise<void>;
+  saveConfig(url: string, anonKey: string, choice?: CloudChoice, confirmation?:string): Promise<void>;
   signUp(email: string, password: string): Promise<'signed-in' | 'confirmation-pending'>;
   signIn(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
@@ -138,12 +139,24 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     [db, platform, adoptEngine],
   );
 
+  const uploadRetainedShop = useCallback(async(client:SupabaseClient,user:string) => {
+    const repo=new SettingsRepo(db);
+    const shop=await repo.get('cloud_upload_shop');
+    if(!shop) return false;
+    const identity=JSON.stringify([await repo.get('supabase_url'),user]);
+    await enrollOwnerShop(db,shop,identity,id=>claimShop(client,id));
+    await db.query("DELETE FROM settings WHERE key='cloud_upload_shop'");
+    enrolledShopRef.current=shop;setEnrolledShopId(shop);await startEngineFor(shop);
+    return true;
+  },[db,startEngineFor]);
+
   // Restore configuration, session, and enrollment once on mount.
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
     void (async () => {
       const all = await new SettingsRepo(db).getAll();
+      if(all.cloud_clear_preferences) { localStorage.clear(); await db.query("DELETE FROM settings WHERE key='cloud_clear_preferences'"); }
       const url = all['supabase_url'];
       const anonKey = all['supabase_anon_key'];
       const enrolled = all['cloud_enrolled_shop_id'] ?? null;
@@ -151,13 +164,14 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       setEnrolledShopId(enrolled);
       if (!url || !anonKey) return;
       setConfigured(true);
-      const client = createVaporFlowSupabaseClient(url, anonKey);
+      const client = createVaporFlowSupabaseClient(url, anonKey, all.cloud_session_namespace);
       clientRef.current = client;
       const { data } = await client.auth.getSession();
       const sessionEmail = data.session?.user?.email ?? null;
       setEmail(sessionEmail);
       // An enrolled device with a live session resumes syncing on app start —
       // the 8A app-start/network/interval/post-sale triggers take over here.
+      if(data.session && platform.network.isOnline() && await uploadRetainedShop(client,data.session.user.id)) return;
       if (all.cloud_join_shop && data.session && platform.network.isOnline()) {
         const result = await enrollExistingShop(db, new SupabaseSyncTransport(client), platform.network, all.cloud_join_shop, {
           identity: JSON.stringify([url, data.session.user.id]),
@@ -177,7 +191,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     })().catch((err) => {
       globalErrorLogger.log(err);
     });
-  }, [db, startEngineFor, adoptEngine, platform]);
+  }, [db, startEngineFor, adoptEngine, platform,uploadRetainedShop]);
 
   // App teardown: no orphaned timers or engines.
   useEffect(() => () => stopEngine(), [stopEngine]);
@@ -190,23 +204,42 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     return client;
   }, []);
 
-  const saveConfig = useCallback(
-    async (url: string, anonKey: string) => {
-      const trimmedUrl = projectUrl(url);
-      const trimmedKey = publicClientKey(anonKey);
-      const settingsRepo = new SettingsRepo(db);
-      await settingsRepo.setCloudConfig(trimmedUrl, trimmedKey);
-      // A new URL/key means a new client: any running engine holds the old
-      // transport and must be rebuilt.
+  const changing = useRef(false);
+  const saveConfig = useCallback(async (url:string, key:string, choice?:CloudChoice, confirmation='') => {
+    if(choice==='cancel') return;
+    if(changing.current) throw Error('A connection change is already running.');
+    changing.current=true;
+    setBusy(true);
+    try {
+      await probeConnection(url,key);
+      const endpoint=projectUrl(url), publicKey=publicClientKey(key);
+      const repo=new SettingsRepo(db);
+      const old=await repo.getAll();
+      if(old.supabase_url===endpoint && old.supabase_anon_key===publicKey) return;
+      const protectedChange=Boolean(old.supabase_url) && await needsCloudChoice(db);
+      if(protectedChange && !choice) throw Error('CLOUD_CHOICE_REQUIRED');
+      const engine=engineRef.current;
+      await engine?.stopAndDrain();
+      try {
+        if(protectedChange && choice) {
+          await switchConnection(db,endpoint,publicKey,choice,async()=>{
+            if(!db.backupForCloudChange) throw Error('Database backup is unavailable.');
+            return db.backupForCloudChange();
+          },confirmation);
+        } else {
+          await repo.setCloudConfig(endpoint,publicKey);
+        }
+      } catch(error) { if(engine) await adoptEngine(engine); throw error; }
       stopEngine();
-      clientRef.current = createVaporFlowSupabaseClient(trimmedUrl, trimmedKey);
-      setConfigured(true);
-      if (enrolledShopRef.current) {
-        await startEngineFor(enrolledShopRef.current);
+      if(protectedChange) {
+        window.location.reload();
+        return;
       }
-    },
-    [db, stopEngine, startEngineFor],
-  );
+      clientRef.current=createVaporFlowSupabaseClient(endpoint,publicKey,old.cloud_session_namespace);
+      setEmail(null);
+      setConfigured(true);
+    } finally { changing.current=false; setBusy(false); }
+  },[db,adoptEngine,stopEngine]);
 
   const signUp = useCallback(
     async (email: string, password: string): Promise<'signed-in' | 'confirmation-pending'> => {
@@ -217,7 +250,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         if (data.session) {
           setEmail(data.session.user.email ?? email);
-          if (enrolledShopRef.current) {
+          if (!await uploadRetainedShop(client,data.session.user.id) && enrolledShopRef.current) {
             await startEngineFor(enrolledShopRef.current);
           }
           return 'signed-in';
@@ -227,7 +260,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         setBusy(false);
       }
     },
-    [requireClient, startEngineFor],
+    [requireClient, startEngineFor,uploadRetainedShop],
   );
 
   const signIn = useCallback(
@@ -239,7 +272,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         if (data.session) {
           setEmail(data.session.user.email ?? email);
-          if (enrolledShopRef.current) {
+          if (!await uploadRetainedShop(client,data.session.user.id) && enrolledShopRef.current) {
             await startEngineFor(enrolledShopRef.current);
           }
         }
@@ -247,7 +280,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         setBusy(false);
       }
     },
-    [requireClient, startEngineFor],
+    [requireClient, startEngineFor,uploadRetainedShop],
   );
 
   const signOut = useCallback(async () => {

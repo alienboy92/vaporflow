@@ -294,9 +294,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
     setSubmitting(true);
     try {
       await sync.saveConfig(supabaseUrl, anonKey);
-      if (!sync.email) {
-        await sync.signIn(email.trim(), password);
-      }
+      await sync.signIn(email.trim(), password);
       const { deviceCode } = await sync.joinExistingShop(shopId, deviceName);
       setJoinedCode(deviceCode);
     } catch (err) {
