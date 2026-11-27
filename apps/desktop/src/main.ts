@@ -1,6 +1,7 @@
 import { MIGRATIONS } from '@bali-hub-pos/core';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
+import { getSetupSql } from './setup-sql.js';
 import updater from 'electron-updater';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdirSync } from 'node:fs';
@@ -55,6 +56,7 @@ async function start(): Promise<void> {
       },
       { webContentsId: window.webContents.id, url: entryUrl },
     );
+  ipcMain.handle('app:getSetupSql', event => { guard(event); return getSetupSql(); });
   const { autoUpdater } = updater;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;

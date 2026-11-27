@@ -1,3 +1,4 @@
+import { generateSetupSql } from '../../../scripts/build-setup-sql.js';
 import { build } from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -5,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export async function buildElectron(options = {}) {
+  generateSetupSql();
   const common = {
     bundle: true,
     platform: 'node',

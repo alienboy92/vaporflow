@@ -10,6 +10,7 @@ const bridge: DesktopBridge = {
     migrate: () => ipcRenderer.invoke('db:migrate'),
   },
   app: {
+    ...(process.platform === 'win32' ? { getSetupSql: () => ipcRenderer.invoke('app:getSetupSql') } : {}),
     downloadUpdate: () => ipcRenderer.invoke('update:download'),
     restartToUpdate: () => ipcRenderer.invoke('update:restart'),
     openBackupFolder: () => ipcRenderer.invoke('app:openBackupFolder'),

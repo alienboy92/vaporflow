@@ -27,6 +27,7 @@
     "appId": "com.vaporflow.pos",
     "publish": { "provider": "github", "owner": "alienboy92", "repo": "vaporflow" },
     "productName": "Bali Hub POS",
+    "extraResources": [{ "from": "../../dist-sql/setup.sql", "to": "setup.sql" }],
     "directories": {
       "output": "out"
     },

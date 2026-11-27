@@ -56,6 +56,7 @@ async function initialize(): Promise<PlatformAdapters> {
       },
       printer: browserPrinter,
       app: {
+        getSetupSql: api.app.getSetupSql,
         downloadUpdate: api.app.downloadUpdate,
         restartToUpdate: api.app.restartToUpdate,
         openBackupFolder: () => api.app.openBackupFolder!(),

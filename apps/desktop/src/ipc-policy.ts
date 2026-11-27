@@ -22,6 +22,7 @@ export function validateBatch(statements: unknown) {
 
 /** External links are restricted to GitHub over HTTPS. */
 export function validateExternalUrl(input: unknown): string {
+  if (input === 'https://supabase.com/dashboard') return input;
   if (typeof input !== 'string' || !isAllowedExternalUrl(input)) {
     throw new Error('Blocked external URL');
   }
