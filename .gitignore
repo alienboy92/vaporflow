@@ -53,6 +53,7 @@ packages/app/dist-types/
 /supabase/.temp/
 
 # Generated distribution artifacts
+/dist-sql/
 release/
 *.exe
 *.msi
