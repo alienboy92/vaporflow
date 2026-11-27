@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useDb } from '../context/DbProvider';
+import { CloudSetupSql } from '../components/CloudSetupSql';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import { ShopRepo } from '@bali-hub-pos/core';
 import { resizeLogo } from '../utils/logo';
@@ -343,6 +344,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
       </p>
 
       <div>
+        <CloudSetupSql warning={sync.schemaWarning} />
         <label className="vf-label">Supabase Project URL *</label>
         <input
           type="url"

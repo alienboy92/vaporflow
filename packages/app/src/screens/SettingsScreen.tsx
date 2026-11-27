@@ -12,6 +12,7 @@ import {
   APP_VERSION,
 } from '@bali-hub-pos/core';
 import type { Shop, Device, VfBackup } from '@bali-hub-pos/core';
+import { CloudSetupSql } from '../components/CloudSetupSql';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
@@ -471,6 +472,7 @@ export function SettingsScreen() {
 
       <section className="vf-card space-y-4 p-5">
         <h2 className="vf-title">Cloud Connection & Sync (Supabase)</h2>
+        <CloudSetupSql warning={sync.schemaWarning} />
         <p className="vf-sub">
           Connect your local shop to Supabase to synchronize sales, inventory, and catalog across devices.
         </p>
