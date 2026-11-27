@@ -13,6 +13,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useDb, usePlatform } from './DbProvider';
 import {
+  readCloudSchema,
   SettingsRepo,
   SYNC_TABLES,
   type SyncProblem,
@@ -47,6 +48,7 @@ const STATUS_POLL_MS = 5000;
 interface CloudSyncContextValue {
   /** Supabase URL + anon key are persisted in local settings. */
   configured: boolean;
+  schemaWarning: string | null;
   /** Signed-in cloud account email, or null. */
   email: string | null;
   /** Shop ID this device is enrolled to (claim or join), or null. */
@@ -77,6 +79,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
   const db = useDb();
   const platform = usePlatform();
   const [configured, setConfigured] = useState(false);
+  const [schemaWarning, setSchemaWarning] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [enrolledShopId, setEnrolledShopId] = useState<string | null>(null);
   const [status, setStatus] = useState<SyncState>(OFFLINE_STATUS);
@@ -99,6 +102,15 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     }
     setStatus(OFFLINE_STATUS);
   }, []);
+
+  const verifySchema = useCallback(async (client: SupabaseClient) => {
+    if (!platform.network.isOnline()) return false;
+    const warning = await readCloudSchema(client);
+    if (client !== clientRef.current || !platform.network.isOnline()) return false;
+    setSchemaWarning(warning);
+    if (warning) stopEngine();
+    return !warning;
+  }, [platform.network, stopEngine]);
 
   const adoptEngine = useCallback(
     async (engine: SyncEngine) => {
@@ -151,10 +163,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
   },[db,startEngineFor]);
 
   // Restore configuration, session, and enrollment once on mount.
-  useEffect(() => {
-    if (restoredRef.current) return;
-    restoredRef.current = true;
-    void (async () => {
+  const resumeCloud = useCallback(async () => {
       const all = await new SettingsRepo(db).getAll();
       if(all.cloud_clear_preferences) { localStorage.clear(); await db.query("DELETE FROM settings WHERE key='cloud_clear_preferences'"); }
       const url = all['supabase_url'];
@@ -164,13 +173,14 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       setEnrolledShopId(enrolled);
       if (!url || !anonKey) return;
       setConfigured(true);
-      const client = createBaliHubPosSupabaseClient(url, anonKey, all.cloud_session_namespace);
+      const client = clientRef.current ?? createBaliHubPosSupabaseClient(url, anonKey, all.cloud_session_namespace);
       clientRef.current = client;
       const { data } = await client.auth.getSession();
       const sessionEmail = data.session?.user?.email ?? null;
       setEmail(sessionEmail);
       // An enrolled device with a live session resumes syncing on app start —
       // the 8A app-start/network/interval/post-sale triggers take over here.
+      if (!data.session || !await verifySchema(client)) return;
       if(data.session && platform.network.isOnline() && await uploadRetainedShop(client,data.session.user.id)) return;
       if (all.cloud_join_shop && data.session && platform.network.isOnline()) {
         const result = await enrollExistingShop(db, new SupabaseSyncTransport(client), platform.network, all.cloud_join_shop, {
@@ -188,10 +198,18 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       } else if (sessionEmail && enrolled) {
         await startEngineFor(enrolled);
       }
-    })().catch((err) => {
-      globalErrorLogger.log(err);
-    });
-  }, [db, startEngineFor, adoptEngine, platform,uploadRetainedShop]);
+  }, [db, startEngineFor, adoptEngine, platform,uploadRetainedShop, verifySchema]);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    void resumeCloud().catch(error => globalErrorLogger.log(error));
+  }, [resumeCloud]);
+
+  useEffect(() => platform.network.onChange(online => {
+    if (!online) { stopEngine(); setSchemaWarning(null); return; }
+    void resumeCloud().catch(error => globalErrorLogger.log(error));
+  }), [platform.network, resumeCloud, stopEngine]);
 
   // App teardown: no orphaned timers or engines.
   useEffect(() => () => stopEngine(), [stopEngine]);
@@ -211,8 +229,11 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     changing.current=true;
     setBusy(true);
     try {
-      await probeConnection(url,key);
-      const endpoint=projectUrl(url), publicKey=publicClientKey(key);
+      const endpoint=projectUrl(url);
+      let publicKey: string;
+      try { publicKey = publicClientKey(key); } catch { throw Error('This key was rejected'); }
+      if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(endpoint)) throw Error('Enter the project URL as https://<ref>.supabase.co.');
+      await probeConnection(endpoint,publicKey);
       const repo=new SettingsRepo(db);
       const old=await repo.getAll();
       if(old.supabase_url===endpoint && old.supabase_anon_key===publicKey) return;
@@ -236,6 +257,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       clientRef.current=createBaliHubPosSupabaseClient(endpoint,publicKey,old.cloud_session_namespace);
+      setSchemaWarning(null);
       setEmail(null);
       setConfigured(true);
     } finally { changing.current=false; setBusy(false); }
@@ -250,7 +272,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         if (data.session) {
           setEmail(data.session.user.email ?? email);
-          if (!await uploadRetainedShop(client,data.session.user.id) && enrolledShopRef.current) {
+          if (await verifySchema(client) && !await uploadRetainedShop(client,data.session.user.id) && enrolledShopRef.current) {
             await startEngineFor(enrolledShopRef.current);
           }
           return 'signed-in';
@@ -260,7 +282,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         setBusy(false);
       }
     },
-    [requireClient, startEngineFor,uploadRetainedShop],
+    [requireClient, startEngineFor,uploadRetainedShop, verifySchema],
   );
 
   const signIn = useCallback(
@@ -272,7 +294,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
         if (data.session) {
           setEmail(data.session.user.email ?? email);
-          if (!await uploadRetainedShop(client,data.session.user.id) && enrolledShopRef.current) {
+          if (await verifySchema(client) && !await uploadRetainedShop(client,data.session.user.id) && enrolledShopRef.current) {
             await startEngineFor(enrolledShopRef.current);
           }
         }
@@ -280,7 +302,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         setBusy(false);
       }
     },
-    [requireClient, startEngineFor,uploadRetainedShop],
+    [requireClient, startEngineFor,uploadRetainedShop, verifySchema],
   );
 
   const signOut = useCallback(async () => {
@@ -291,6 +313,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       const { error } = await client.auth.signOut({ scope: 'local' });
       if (error) throw error;
       stopEngine();
+      setSchemaWarning(null);
       setEmail(null);
     } finally {
       setBusy(false);
@@ -307,6 +330,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     try {
       const {data} = await client.auth.getSession();
       if (!data.session) throw new Error('Sign in to claim your shop.');
+      if (!await verifySchema(client)) throw new Error('Cloud schema verification is required.');
       const identity = JSON.stringify([await new SettingsRepo(db).get('supabase_url'), data.session.user.id]);
       await enrollOwnerShop(db, shop.id, identity, id => claimShop(client, id));
       enrolledShopRef.current = shop.id;
@@ -315,7 +339,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, [db, requireClient, startEngineFor]);
+  }, [db, requireClient, startEngineFor, verifySchema]);
 
   const joinExistingShop = useCallback(
     async (shopIdInput: string, deviceName: string): Promise<{ deviceCode: string }> => {
@@ -326,6 +350,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       }
       setBusy(true);
       try {
+        if (!await verifySchema(client)) throw new Error('Cloud schema verification is required.');
         const transport = new SupabaseSyncTransport(client);
         // Probe before claiming: claim_shop would CREATE a shop for an
         // unknown ID (and silently join it), so a typo must be caught with a
@@ -354,10 +379,11 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         setBusy(false);
       }
     },
-    [db, platform, requireClient, adoptEngine],
+    [db, platform, requireClient, adoptEngine, verifySchema],
   );
 
   const syncNow = useCallback(async () => {
+    if (!engineRef.current && enrolledShopRef.current && platform.network.isOnline()) await resumeCloud();
     const engine = engineRef.current;
     if (!engine) {
       throw new Error('Not connected to the cloud yet. Connect first in Cloud Connection.');
@@ -381,7 +407,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [platform.network, resumeCloud]);
 
   const saleCompleted = useCallback(() => {
     engineRef.current?.saleCompleted();
@@ -389,6 +415,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
 
   const value: CloudSyncContextValue = {
     configured,
+    schemaWarning,
     email,
     enrolledShopId,
     status,
