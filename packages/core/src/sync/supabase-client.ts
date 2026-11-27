@@ -25,7 +25,7 @@ export function publicClientKey(input: string): string {
   throw new Error('Enter a Supabase publishable key or legacy anon key.');
 }
 
-export function createVaporFlowSupabaseClient(url: string, anonKey: string, storageKey?: string): SupabaseClient {
+export function createBaliHubPosSupabaseClient(url: string, anonKey: string, storageKey?: string): SupabaseClient {
   return createClient(projectUrl(url), publicClientKey(anonKey), {
     auth: {
       ...(storageKey ? {storageKey} : {}),

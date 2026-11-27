@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createVaporFlowSupabaseClient, claimShop, SupabaseSyncTransport } from './index.js';
+import { createBaliHubPosSupabaseClient, claimShop, SupabaseSyncTransport } from './index.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 describe('Supabase Client and Transport (Phase 8B)', () => {
   it('creates supabase client with correct options', () => {
-    const client = createVaporFlowSupabaseClient('https://example.supabase.co', 'sb_publishable_example');
+    const client = createBaliHubPosSupabaseClient('https://example.supabase.co', 'sb_publishable_example');
     expect(client).toBeDefined();
   });
 

@@ -17,14 +17,14 @@ const release: GithubRelease = {
   published_at: '2026-11-22T10:00:00.000Z',
   assets: [
     {
-      name: 'VaporFlow Setup 1.1.0.exe',
+      name: 'Bali Hub POS Setup 1.1.0.exe',
       browser_download_url:
-        'https://github.com/alienboy92/vaporflow/releases/download/v1.1.0/VaporFlow-Setup-1.1.0.exe',
+        'https://github.com/alienboy92/vaporflow/releases/download/v1.1.0/Bali-Hub-POS-Setup-1.1.0.exe',
     },
     {
-      name: 'VaporFlow-1.1.0.apk',
+      name: 'Bali-Hub-POS-1.1.0.apk',
       browser_download_url:
-        'https://github.com/alienboy92/vaporflow/releases/download/v1.1.0/VaporFlow-1.1.0.apk',
+        'https://github.com/alienboy92/vaporflow/releases/download/v1.1.0/Bali-Hub-POS-1.1.0.apk',
     },
   ],
 };
@@ -67,14 +67,14 @@ describe('checkForUpdate', () => {
     expect(result.latestVersion).toBe('1.1.0');
     expect(result.currentVersion).toBe('1.0.0');
     expect(result.releaseUrl).toBe(release.html_url);
-    expect(result.downloadUrl).toContain('VaporFlow-Setup-1.1.0.exe');
+    expect(result.downloadUrl).toContain('Bali-Hub-POS-Setup-1.1.0.exe');
     expect(result.notes).toBe('Fixes returns and adds update checks.');
     expect(result.publishedAt).toBe('2026-11-22T10:00:00.000Z');
   });
 
   it('selects the APK for Android', async () => {
     const result = await checkForUpdate(responding(release), '1.0.0', 'android');
-    expect(result.downloadUrl).toContain('VaporFlow-1.1.0.apk');
+    expect(result.downloadUrl).toContain('Bali-Hub-POS-1.1.0.apk');
   });
 
   it('reports no update when the running version is equal or newer', async () => {

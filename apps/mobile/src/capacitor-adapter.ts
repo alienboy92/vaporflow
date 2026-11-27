@@ -1,5 +1,5 @@
 import { Directory, Filesystem } from '@capacitor/filesystem';
-import { backupName } from '@vaporflow/core';
+import { backupName } from '@bali-hub-pos/core';
 import {
   CapacitorSQLite,
   SQLiteConnection,
@@ -14,7 +14,7 @@ import {
   MIGRATIONS,
   type MigrationRecord,
   type DbAdapter,
-} from '@vaporflow/core';
+} from '@bali-hub-pos/core';
 
 const connections = new SQLiteConnection(CapacitorSQLite);
 export type MobileConnection = Pick<

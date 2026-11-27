@@ -1,6 +1,6 @@
 /** Receipt HTML builders (80mm thermal layout). Pure string functions, no DOM. */
-import { formatMoney } from '@vaporflow/core';
-import type { Sale, SaleItem, Shop } from '@vaporflow/core';
+import { formatMoney } from '@bali-hub-pos/core';
+import type { Sale, SaleItem, Shop } from '@bali-hub-pos/core';
 
 function escapeHtml(value: string): string {
   return value

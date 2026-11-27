@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Shop, Sale, SaleItem, Return, formatMoney } from '@vaporflow/core';
+import { Shop, Sale, SaleItem, Return, formatMoney } from '@bali-hub-pos/core';
 import { usePlatform } from '../context/DbProvider';
 import { buildReceiptHtml, RECEIPT_CSS } from '../utils/receipt-html';
 import { buildReceiptPdf } from '../utils/receipt-pdf';

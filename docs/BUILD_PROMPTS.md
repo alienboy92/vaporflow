@@ -1,4 +1,4 @@
-# VaporFlow — Build Plan and Copy-Paste Prompts
+# Bali Hub POS — Build Plan and Copy-Paste Prompts
 
 Version 2.0 · 15 November 2026 · Companion to SPEC v1.1
 

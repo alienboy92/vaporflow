@@ -10,8 +10,8 @@ import {
   validateBackupJson,
   resetLocalDatabase,
   APP_VERSION,
-} from '@vaporflow/core';
-import type { Shop, Device, VfBackup } from '@vaporflow/core';
+} from '@bali-hub-pos/core';
+import type { Shop, Device, VfBackup } from '@bali-hub-pos/core';
 import { useCloudSync } from '../context/CloudSyncProvider';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
@@ -789,7 +789,7 @@ export function SettingsScreen() {
       <section className="vf-card space-y-3 p-5">
         <h2 className="vf-title">Application Information</h2>
         <div className="space-y-1 text-sm text-slate-600">
-          <p>App Name: VaporFlow POS</p>
+          <p>App Name: Bali Hub POS</p>
           <p>Version: {APP_VERSION}</p>
           <p>{platform.platform === 'desktop' ? 'Platform: Windows desktop' : 'Platform: Android'}</p>
         </div>

@@ -12,7 +12,7 @@ class AppBoundary extends Component<{ children: ReactNode }, { failed: boolean }
   override componentDidCatch(error: Error) { globalErrorLogger.log(error); }
   override render() {
     if (this.state.failed) return <main className="p-6" role="alert">
-      <h1>VaporFlow could not display this screen</h1>
+      <h1>Bali Hub POS could not display this screen</h1>
       <p>Reopen the app and check Sales before retrying a checkout.</p>
       <button className="vf-btn-primary" onClick={() => window.location.reload()}>Reopen app</button>
     </main>;

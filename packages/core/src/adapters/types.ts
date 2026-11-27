@@ -1,4 +1,4 @@
-/** Platform adapter interfaces for VaporFlow (SPEC 5) */
+/** Platform adapter interfaces for Bali Hub POS (SPEC 5) */
 
 export interface DbAdapter {
   backupForCloudChange?(): Promise<string>;

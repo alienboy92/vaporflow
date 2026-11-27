@@ -1,5 +1,5 @@
 import { BarcodeScanner } from '@capacitor-mlkit/barcode-scanning';
-import type { ScannerAdapter } from '@vaporflow/core';
+import type { ScannerAdapter } from '@bali-hub-pos/core';
 
 export const capacitorScanner: ScannerAdapter = {
   async scanWithCamera(): Promise<string | null> {
@@ -9,7 +9,7 @@ export const capacitorScanner: ScannerAdapter = {
     if (status.camera !== 'granted') {
       status = await BarcodeScanner.requestPermissions();
       if (status.camera !== 'granted') {
-        throw new Error('Camera permission was denied. Enable the camera for VaporFlow in Android settings to scan barcodes.');
+        throw new Error('Camera permission was denied. Enable the camera for Bali Hub POS in Android settings to scan barcodes.');
       }
     }
     try {

@@ -1,6 +1,6 @@
 {
   "appId": "com.vaporflow.pos",
-  "appName": "VaporFlow",
+  "appName": "Bali Hub POS",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

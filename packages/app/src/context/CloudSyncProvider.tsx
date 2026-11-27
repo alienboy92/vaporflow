@@ -17,7 +17,7 @@ import {
   SYNC_TABLES,
   type SyncProblem,
   ShopRepo,
-  createVaporFlowSupabaseClient,
+  createBaliHubPosSupabaseClient,
   probeConnection, needsCloudChoice, switchConnection, type CloudChoice,
   projectUrl,
   publicClientKey,
@@ -29,8 +29,8 @@ import {
   enrollOwnerShop,
   restoreBackup,
   type VfBackup,
-} from '@vaporflow/core';
-import type { SyncState } from '@vaporflow/core';
+} from '@bali-hub-pos/core';
+import type { SyncState } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 
 const OFFLINE_STATUS: SyncState = {
@@ -164,7 +164,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
       setEnrolledShopId(enrolled);
       if (!url || !anonKey) return;
       setConfigured(true);
-      const client = createVaporFlowSupabaseClient(url, anonKey, all.cloud_session_namespace);
+      const client = createBaliHubPosSupabaseClient(url, anonKey, all.cloud_session_namespace);
       clientRef.current = client;
       const { data } = await client.auth.getSession();
       const sessionEmail = data.session?.user?.email ?? null;
@@ -235,7 +235,7 @@ export function CloudSyncProvider({ children }: { children: React.ReactNode }) {
         window.location.reload();
         return;
       }
-      clientRef.current=createVaporFlowSupabaseClient(endpoint,publicKey,old.cloud_session_namespace);
+      clientRef.current=createBaliHubPosSupabaseClient(endpoint,publicKey,old.cloud_session_namespace);
       setEmail(null);
       setConfigured(true);
     } finally { changing.current=false; setBusy(false); }

@@ -1,4 +1,4 @@
-# VaporFlow — Phase 7 review
+# Bali Hub POS — Phase 7 review
 
 > Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
 
@@ -37,7 +37,7 @@ Independent review of `c719865` found ten issues; all are resolved:
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
 | `pnpm test` | PASS — 105 tests, 18 files (was 102; +3 restore-safety tests), plus 1 skipped opt-in benchmark |
-| `pnpm --filter @vaporflow/app build` | PASS — 10.5 s; main chunk 892 kB (246 kB gzip), papaparse added ~50 kB |
+| `pnpm --filter @bali-hub-pos/app build` | PASS — 10.5 s; main chunk 892 kB (246 kB gzip), papaparse added ~50 kB |
 | 2,000-row import acceptance | PASS — ~0.6 s (limit 15 s); second import: 0 imported, 2,000 skipped |
 
 ## Remaining acceptance (hardware/live)

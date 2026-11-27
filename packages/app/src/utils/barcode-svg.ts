@@ -1,5 +1,5 @@
 /** Scannable EAN-13 barcode rendering as SVG, from the core module encoder. */
-import { ean13BarRuns } from '@vaporflow/core';
+import { ean13BarRuns } from '@bali-hub-pos/core';
 
 export interface BarcodeSvgOptions {
   /** Height of the bar area in user units (default 40). */

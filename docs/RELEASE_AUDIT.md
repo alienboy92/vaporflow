@@ -1,4 +1,4 @@
-# VaporFlow release audit
+# Bali Hub POS release audit
 
 ## Phase A • read-only findings
 
@@ -110,11 +110,11 @@ pnpm test
 $env:VAPORFLOW_BENCH = '1'
 pnpm test -- packages/core/src/scale-benchmark.test.ts packages/core/src/phase6.test.ts
 Remove-Item Env:VAPORFLOW_BENCH
-pnpm --filter @vaporflow/desktop test:contract
-pnpm --filter @vaporflow/desktop build:unpacked
-pnpm --filter @vaporflow/desktop smoke
-pnpm --filter @vaporflow/mobile build
-pnpm --filter @vaporflow/mobile exec cap copy android
+pnpm --filter @bali-hub-pos/desktop test:contract
+pnpm --filter @bali-hub-pos/desktop build:unpacked
+pnpm --filter @bali-hub-pos/desktop smoke
+pnpm --filter @bali-hub-pos/mobile build
+pnpm --filter @bali-hub-pos/mobile exec cap copy android
 . ./scripts/android-env.ps1
 ./apps/mobile/android/gradlew.bat -p apps/mobile/android :app:mergeReleaseAssets :app:compileReleaseJavaWithJavac
 pnpm audit --json

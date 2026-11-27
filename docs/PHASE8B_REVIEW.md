@@ -1,10 +1,10 @@
-# VaporFlow — Phase 8B review
+# Bali Hub POS — Phase 8B review
 
 Updated 17 November 2026. Scope: Auth, cloud enrollment, and Supabase integration. Implementation commit `fdb4044`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` and `docs/BUILD_PROMPTS.md` are unchanged.
 
 ## What was built (as reviewed)
 
-- Supabase client wrapper (`packages/core/src/sync/supabase-client.ts`): `createVaporFlowSupabaseClient` (persistent session, auto token refresh) and `claimShop` over the `claim_shop` RPC.
+- Supabase client wrapper (`packages/core/src/sync/supabase-client.ts`): `createBaliHubPosSupabaseClient` (persistent session, auto token refresh) and `claimShop` over the `claim_shop` RPC.
 - Transport (`packages/core/src/sync/supabase-transport.ts`): `SupabaseSyncTransport` mapping `sync_push`/`sync_pull` RPC args exactly, with table/limit/cursor validation and RPC-error propagation.
 - Settings UI cloud panel and `.env.example` + `docs/SUPABASE_SETUP.md`.
 
@@ -36,7 +36,7 @@ Additional repairs found while applying the fixes: `enrollExistingShop` original
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
 | `pnpm test` | PASS — 152 tests across 24 files (was 138; +8 transport error-path tests, +6 second-device enrollment tests against two real SQLite databases), plus 2 skipped opt-in benchmarks |
-| `pnpm --filter @vaporflow/app build` | PASS — 8.8 s |
+| `pnpm --filter @bali-hub-pos/app build` | PASS — 8.8 s |
 
 Enrollment tests cover: probe exists/absent (read-only — no placeholder row created), full enrollment (unique code ≠ owner's, device row pushed with `dirty` cleared, `active_device_id` set, shop/catalog/sales pulled, stock converged, counter = '2'), non-empty-device rejection, offline rejection, interrupted-retry device reuse (same id and code, no duplicate rows), and repeat-enrollment code uniqueness against accumulated cloud devices.
 

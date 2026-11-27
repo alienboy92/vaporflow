@@ -1,4 +1,4 @@
-import { MIGRATIONS } from '@vaporflow/core';
+import { MIGRATIONS } from '@bali-hub-pos/core';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -14,6 +14,9 @@ if (smokeDirectory) {
   if (!path.isAbsolute(smokeDirectory)) throw new Error('Smoke directory must be absolute');
   mkdirSync(smokeDirectory, { recursive: true });
   app.setPath('userData', smokeDirectory);
+} else {
+  // Preserve the original shop profile across the product rename.
+  app.setPath('userData', path.join(app.getPath('appData'), 'VaporFlow'));
 }
 const entryUrl =
   development && !smokeDirectory
@@ -33,7 +36,7 @@ async function start(): Promise<void> {
     minWidth: 800,
     minHeight: 600,
     show: !smokeDirectory,
-    title: 'VaporFlow',
+    title: 'Bali Hub POS',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

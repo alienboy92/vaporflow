@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { barcodeSvgString } from './barcode-svg';
-import { generateEAN13 } from '@vaporflow/core';
+import { generateEAN13 } from '@bali-hub-pos/core';
 
 describe('barcode SVG', () => {
   it('renders bars only on black runs with quiet zones and human text', () => {

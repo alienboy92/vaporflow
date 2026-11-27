@@ -1,4 +1,4 @@
-# VaporFlow — Phase 6 review
+# Bali Hub POS — Phase 6 review
 
 > Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
 
@@ -40,7 +40,7 @@ Independent review of `395ea6b` found nine issues; all are resolved:
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
 | `pnpm test` | PASS — 96 tests, 17 files, plus 1 honestly-skipped opt-in benchmark (`VAPORFLOW_BENCH=1` runs a real 1,000-sale benchmark, NOT RUN here) |
-| `pnpm --filter @vaporflow/app build` | PASS — 9.0 s production build |
+| `pnpm --filter @bali-hub-pos/app build` | PASS — 9.0 s production build |
 | Bundle size note | Main chunk 842 kB (232 kB gzip) — recharts 2.13.3 dominates; lazy-loading `ReportsScreen` left as optional future work |
 
 ## Remaining acceptance (hardware/live)

@@ -18,7 +18,7 @@ async function main() {
     await access(electronPath);
   } catch (cause) {
     throw new Error(
-      'Electron binary is missing. From the repo root run: pnpm --filter @vaporflow/desktop exec node node_modules/electron/install.js',
+      'Electron binary is missing. From the repo root run: pnpm --filter @bali-hub-pos/desktop exec node node_modules/electron/install.js',
       { cause },
     );
   }

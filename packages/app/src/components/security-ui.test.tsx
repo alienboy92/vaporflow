@@ -7,7 +7,7 @@ import { Shell } from './Shell';
 import { App } from '../App';
 import { handleBackThroughDialogs } from '../utils/back-nav';
 import { notifyStockChanged } from '../utils/stock-events';
-import { uuidv7, hashPin } from '@vaporflow/core';
+import { uuidv7, hashPin } from '@bali-hub-pos/core';
 import type { ReactNode } from 'react';
 
 const state = vi.hoisted(() => ({ db: { query: vi.fn() }, values: {} as Record<string, string> }));
@@ -67,7 +67,7 @@ async function enterPin(pin = '1234') {
 }
 it('requires PIN on startup and removes navigation and protected routes while locked', async () => {
   await mountShell();
-  expect(JSON.stringify(renderer!.toJSON())).toContain('VaporFlow Locked');
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Bali Hub POS Locked');
   expect(JSON.stringify(renderer!.toJSON())).not.toContain('Shop settings content');
   expect(renderer!.root.findAllByType('nav')).toHaveLength(0);
 });
@@ -137,7 +137,7 @@ it('applies PIN enabling and idle changes immediately and removes an open drawer
   act(() => {
     vi.advanceTimersByTime(60000);
   });
-  expect(JSON.stringify(renderer!.toJSON())).toContain('VaporFlow Locked');
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Bali Hub POS Locked');
   expect(renderer!.root.findAllByType('a')).toHaveLength(0);
 });
 it('shows a retry screen instead of setup when the shop query fails', async () => {

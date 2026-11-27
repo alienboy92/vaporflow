@@ -17,5 +17,5 @@ project(':capacitor-filesystem').projectDir = new File('../../../node_modules/.p
 include ':capacitor-share'
 project(':capacitor-share').projectDir = new File('../../../node_modules/.pnpm/@capacitor+share@6.0.2_@capacitor+core@6.2.3/node_modules/@capacitor/share/android')
 
-include ':vaporflow-capacitor-printer'
-project(':vaporflow-capacitor-printer').projectDir = new File('../../../packages/capacitor-printer/android')
+include ':bali-hub-pos-capacitor-printer'
+project(':bali-hub-pos-capacitor-printer').projectDir = new File('../../../packages/capacitor-printer/android')

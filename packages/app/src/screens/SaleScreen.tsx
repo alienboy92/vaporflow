@@ -12,8 +12,8 @@ import {
   uuidv7,
   formatMoney,
   roundRatio,
-} from '@vaporflow/core';
-import type { Shop, Category, Variant, Sale, SaleItem } from '@vaporflow/core';
+} from '@bali-hub-pos/core';
+import type { Shop, Category, Variant, Sale, SaleItem } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
 import {

@@ -6,8 +6,8 @@ import {
   ExpenseRepo,
   formatMoney,
   localDate,
-} from '@vaporflow/core';
-import type { Shop, ProfitAndLoss, TopItemDetail } from '@vaporflow/core';
+} from '@bali-hub-pos/core';
+import type { Shop, ProfitAndLoss, TopItemDetail } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 import {
   ResponsiveContainer,

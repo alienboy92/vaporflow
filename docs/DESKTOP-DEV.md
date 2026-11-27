@@ -1,6 +1,6 @@
 # Desktop launch troubleshooting
 
-Run all commands from `D:\Projects\VaporFlow` in PowerShell.
+Run all commands from the repository root in PowerShell.
 
 ```powershell
 pnpm install
@@ -29,8 +29,8 @@ The first command should print `false`. To repair a missing Electron binary:
 
 ```powershell
 Remove-Item Env:ELECTRON_SKIP_BINARY_DOWNLOAD -ErrorAction SilentlyContinue
-npm exec --yes --package=pnpm@9.14.2 -- pnpm --filter @vaporflow/desktop exec node node_modules/electron/install.js
-pnpm --filter @vaporflow/desktop exec electron --version
+npm exec --yes --package=pnpm@9.14.2 -- pnpm --filter @bali-hub-pos/desktop exec node node_modules/electron/install.js
+pnpm --filter @bali-hub-pos/desktop exec electron --version
 pnpm dev:desktop
 ```
 

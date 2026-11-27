@@ -44,7 +44,7 @@ function Write-AndroidCheck([bool]$Passed, [string]$Name, [string]$Detail, [stri
 Write-AndroidCheck ([bool]$androidJavaHome) 'Java 17 JDK' "$androidJavaHome" 'winget install --id EclipseAdoptium.Temurin.17.JDK --exact; for a custom location set JAVA_HOME to a JDK 17 directory.'
 $sdkExists = $androidSdk -and (Test-Path $androidSdk)
 Write-AndroidCheck ([bool]$sdkExists) 'ANDROID_HOME' "$androidSdk (resolved for this process)" 'Install the Android SDK; set ANDROID_HOME or sdk.dir in apps/mobile/android/local.properties.'
-Write-AndroidCheck (Test-Path $androidVariables) 'Android project' "$androidProject" 'pnpm --filter @vaporflow/mobile exec cap add android'
+Write-AndroidCheck (Test-Path $androidVariables) 'Android project' "$androidProject" 'pnpm --filter @bali-hub-pos/mobile exec cap add android'
 $manifestFile = Join-Path $androidProject 'app/src/main/AndroidManifest.xml'
 $manifestHasCamera = (Test-Path $manifestFile) -and ((Get-Content $manifestFile -Raw) -match 'android\.permission\.CAMERA')
 Write-AndroidCheck $manifestHasCamera 'Camera permission (manifest)' "$manifestFile" 'After cap add android, re-run scripts/android.ps1 - it patches the manifest automatically.'
@@ -72,11 +72,11 @@ if ($adb -and (Test-Path $adb)) {
 if (!$androidChecksPassed) { exit 1 }
 if ($Doctor) { exit 0 }
 
-& pnpm --filter '@vaporflow/mobile' build
+& pnpm --filter '@bali-hub-pos/mobile' build
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& pnpm --filter '@vaporflow/mobile' exec cap sync android
+& pnpm --filter '@bali-hub-pos/mobile' exec cap sync android
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-$capArguments = @('--filter', '@vaporflow/mobile', 'exec', 'cap', 'run', 'android')
+$capArguments = @('--filter', '@bali-hub-pos/mobile', 'exec', 'cap', 'run', 'android')
 if ($Target) { $capArguments += @('--target', $Target) }
 & pnpm @capArguments
 exit $LASTEXITCODE

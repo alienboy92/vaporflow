@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DesktopBridge } from '@vaporflow/core';
+import type { DesktopBridge } from '@bali-hub-pos/core';
 
 const bridge: DesktopBridge = {
   platform: 'desktop',

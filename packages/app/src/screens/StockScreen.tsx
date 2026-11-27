@@ -1,8 +1,8 @@
 import { useRecordWindow } from '../utils/use-record-window';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
-import { StockRepo, ShopRepo, ProductRepo, DeviceRepo, formatMoney } from '@vaporflow/core';
-import type { Shop, StockMovement } from '@vaporflow/core';
+import { StockRepo, ShopRepo, ProductRepo, DeviceRepo, formatMoney } from '@bali-hub-pos/core';
+import type { Shop, StockMovement } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
 import { registerBackHandler } from '../utils/back-nav';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Shop } from '@vaporflow/core';
+import type { Shop } from '@bali-hub-pos/core';
 import { usePlatform } from '../context/DbProvider';
 import { returnReceiptLines, returnReceiptHtml, returnReceiptPdf, type ReturnReceipt } from '../utils/return-receipt';
 import { htmlDocument } from '../utils/print';

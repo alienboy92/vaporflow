@@ -1,4 +1,4 @@
-# VaporFlow
+# Bali Hub POS
 
 Point-of-sale system for retail shops. Runs on Windows (Electron) and Android (Capacitor), works fully offline, syncs to Supabase when online.
 
@@ -76,9 +76,9 @@ $sdkmanager = Join-Path $env:ANDROID_HOME 'cmdline-tools/12.0/bin/sdkmanager.bat
 & $sdkmanager "--sdk_root=$env:ANDROID_HOME" 'platforms;android-34' 'build-tools;34.0.0' 'platform-tools'
 
 # First time only: generate the ignored native project if it does not exist.
-pnpm --filter @vaporflow/mobile build
+pnpm --filter @bali-hub-pos/mobile build
 if (!(Test-Path apps/mobile/android)) {
-    pnpm --filter @vaporflow/mobile exec cap add android
+    pnpm --filter @bali-hub-pos/mobile exec cap add android
 }
 
 # Connect/unlock the phone, enable USB debugging, and approve its USB prompt.
@@ -94,7 +94,7 @@ selection as the runner. Neither command installs prerequisites automatically.
 
 The runner builds the shared web app, copies it into the existing mobile `dist`,
 syncs Capacitor, builds the APK, installs it, and launches the app. On the phone,
-confirm that **VaporFlow** opens to first-run setup (or the sales screen if the
+confirm that **Bali Hub POS** opens to first-run setup (or the sales screen if the
 shop is already configured). The debug APK is
 `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
 Native build outputs, local.properties, and signing files must stay uncommitted.
@@ -130,7 +130,7 @@ docs/              — Product specification
 
 From the repository root, generate the Android project as described above if it is absent. For a new signing identity, choose a private directory outside the repository and create the key interactively:
 
-    keytool -genkeypair -v -storetype JKS -keystore C:/private/VaporFlow-release.jks -alias vaporflow -keyalg RSA -keysize 3072 -validity 10000
+    keytool -genkeypair -v -storetype JKS -keystore C:/private/Bali-Hub-POS-release.jks -alias vaporflow -keyalg RSA -keysize 3072 -validity 10000
 
 Back up the key securely and store passwords in a password manager. Reuse the same identity for app updates. Copy the example locally, then edit the four values in the ignored copy. Use forward slashes for Windows paths and Java properties escaping for literal backslashes.
 
@@ -139,9 +139,9 @@ Back up the key securely and store passwords in a password manager. Reuse the sa
 
 Build from PowerShell and verify the APK signature and certificate fingerprint against the expected signing identity:
 
-    pnpm --filter @vaporflow/mobile build
+    pnpm --filter @bali-hub-pos/mobile build
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android.ps1 -PrepareOnly
-    pnpm --filter @vaporflow/mobile exec cap sync android
+    pnpm --filter @bali-hub-pos/mobile exec cap sync android
     . ./scripts/android-env.ps1
     & ./apps/mobile/android/gradlew.bat -p apps/mobile/android assembleRelease
     & "$androidSdk/build-tools/34.0.0/apksigner.bat" verify --verbose --print-certs apps/mobile/android/app/build/outputs/apk/release/app-release.apk

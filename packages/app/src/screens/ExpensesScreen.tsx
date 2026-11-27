@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useDb } from '../context/DbProvider';
-import { ShopRepo, ExpenseRepo, DeviceRepo, uuidv7, formatMoney, localDate } from '@vaporflow/core';
-import type { Shop, Expense } from '@vaporflow/core';
+import { ShopRepo, ExpenseRepo, DeviceRepo, uuidv7, formatMoney, localDate } from '@bali-hub-pos/core';
+import type { Shop, Expense } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 import { useToast } from '../components/Toast';
 

@@ -5,7 +5,7 @@ import {
   RowsSchema,
   type DesktopBridge,
   type PlatformAdapters,
-} from '@vaporflow/core';
+} from '@bali-hub-pos/core';
 import { browserPrinter } from '../utils/printer';
 
 declare global {
@@ -62,7 +62,7 @@ async function initialize(): Promise<PlatformAdapters> {
     };
     await database.db.migrate();
   } else {
-    const { createMobileDatabase } = await import('@vaporflow/mobile');
+    const { createMobileDatabase } = await import('@bali-hub-pos/mobile');
     database = {
       platform: 'android',
       ...(await createMobileDatabase()),
@@ -118,7 +118,7 @@ export function DbProvider({ children }: { children: ReactNode }) {
   if (error)
     return (
       <main className="p-6">
-        <h1>VaporFlow — Database unavailable</h1>
+        <h1>Bali Hub POS — Database unavailable</h1>
         <p role="alert">{error}</p>
         <button
           className="mt-4 min-h-11 rounded bg-blue-700 px-4 text-white"
@@ -134,7 +134,7 @@ export function DbProvider({ children }: { children: ReactNode }) {
   if (!adapters)
     return (
       <main className="p-6" role="status">
-        VaporFlow — Opening database…
+        Bali Hub POS — Opening database…
       </main>
     );
   return <PlatformContext.Provider value={adapters}>{children}</PlatformContext.Provider>;

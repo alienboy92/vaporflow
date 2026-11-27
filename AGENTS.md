@@ -1,4 +1,4 @@
-# AGENTS.md — VaporFlow Build Rules
+# AGENTS.md — Bali Hub POS Build Rules
 
 ## Code standards
 - TypeScript strict mode, no `any`. Validate all external data with zod.

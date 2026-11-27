@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
-import { backupName } from '@vaporflow/core';
+import { backupName } from '@bali-hub-pos/core';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync, backup } from 'node:sqlite';
 import {
@@ -11,7 +11,7 @@ import {
   MIGRATIONS,
   type MigrationRecord,
   type DbAdapter,
-} from '@vaporflow/core';
+} from '@bali-hub-pos/core';
 
 /** The production Electron adapter, also exercised by the Electron contract runner. */
 export class ElectronDbAdapter implements DbAdapter {

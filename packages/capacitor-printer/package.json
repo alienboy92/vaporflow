@@ -1,8 +1,8 @@
 {
-  "name": "@vaporflow/capacitor-printer",
+  "name": "@bali-hub-pos/capacitor-printer",
   "version": "1.0.0",
   "private": true,
-  "description": "Android system printing for VaporFlow receipts and label sheets",
+  "description": "Android system printing for Bali Hub POS receipts and label sheets",
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",

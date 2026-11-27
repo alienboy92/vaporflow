@@ -1,7 +1,7 @@
 /** Printable 80 mm PDF with native text and browser-rendered Unicode and logo images. */
 import { formatDateTime } from './receipt-html';
-import { formatMoney } from '@vaporflow/core';
-import type { Sale, SaleItem, Shop } from '@vaporflow/core';
+import { formatMoney } from '@bali-hub-pos/core';
+import type { Sale, SaleItem, Shop } from '@bali-hub-pos/core';
 
 /** 80 mm in PostScript points (1 mm = 72/25.4 pt). */
 export const RECEIPT_PDF_WIDTH_PT = Math.round((80 * 72 * 100) / 25.4) / 100; // 226.77

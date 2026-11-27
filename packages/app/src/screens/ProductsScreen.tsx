@@ -15,8 +15,8 @@ import {
   generateCsvTemplate,
   previewCsvImport,
   executeCsvImport,
-} from '@vaporflow/core';
-import type { Product, Variant, Category, Shop, ImportPreviewRow, ImportResult } from '@vaporflow/core';
+} from '@bali-hub-pos/core';
+import type { Product, Variant, Category, Shop, ImportPreviewRow, ImportResult } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
 import { registerBackHandler } from '../utils/back-nav';

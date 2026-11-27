@@ -1,10 +1,10 @@
-# VaporFlow — Supabase Setup and Deployment Guide
+# Bali Hub POS — Supabase Setup and Deployment Guide
 
 Version 2.0 · Phase 8B Companion
 
 ## 1. Safety & Architecture Rules
 - **Never replay initial CREATE TABLE migrations (`00001_initial.sql`) over a deployed production database.** Use Supabase migrations or schema evolution for incremental changes.
-- **Never expose `service_role` keys** in client applications (`@vaporflow/app`, Electron, Capacitor) or repository secrets. Only use `anon` / public keys.
+- **Never expose `service_role` keys** in client applications (`@bali-hub-pos/app`, Electron, Capacitor) or repository secrets. Only use `anon` / public keys.
 - Tenant isolation is enforced at the database level via RLS policies (`member_read`), check constraints (`shop_id = id`), immutable ledger triggers (`prevent_ledger_change()`), and secure RPC functions (`claim_shop`, `sync_push`, `sync_pull`).
 
 ## 2. Project Setup Steps
@@ -18,7 +18,7 @@ Version 2.0 · Phase 8B Companion
 4. Apply the initial schema migration (`supabase/migrations/00001_initial.sql`) using the Supabase CLI (`supabase db push`) or SQL Editor in the Supabase Dashboard.
 5. Configure Authentication providers:
    - Enable Email/Password authentication in Supabase Auth settings.
-   - Configure email confirmation settings according to your deployment policy. (VaporFlow handles pending confirmation states gracefully by informing the user if confirmation is required before signing in).
+   - Configure email confirmation settings according to your deployment policy. (Bali Hub POS handles pending confirmation states gracefully by informing the user if confirmation is required before signing in).
 
 ## 3. Cloud Enrollment & Sync Workflow
 - **Sign Up / Sign In**: Users sign up or sign in with email and password via the Cloud & Sync settings panel. Sign-up that requires email confirmation returns a clear "check your email" state instead of a silent failure.
@@ -30,7 +30,7 @@ Version 2.0 · Phase 8B Companion
   4. Pull every synced table from scratch (null cursors) via the sync engine.
   5. Recover the receipt counter to the highest receipt number in use (last-used convention: the next sale uses value + 1).
   Joining is rejected if the device already has a local shop, or while offline.
-- **Offline Resilience**: VaporFlow is local-first. SQLite remains fully functional offline. The engine polls status every 5 seconds for the UI, and on network return, the 30-second interval, and 2 seconds after each sale, it pushes pending dirty rows and pulls updates. "Sync Now" forces an immediate pass.
+- **Offline Resilience**: Bali Hub POS is local-first. SQLite remains fully functional offline. The engine polls status every 5 seconds for the UI, and on network return, the 30-second interval, and 2 seconds after each sale, it pushes pending dirty rows and pulls updates. "Sync Now" forces an immediate pass.
 
 ## 4. Live acceptance suite
 

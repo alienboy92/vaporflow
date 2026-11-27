@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useDb, usePlatform } from '../context/DbProvider';
-import { StockRepo, ShopRepo, DeviceRepo } from '@vaporflow/core';
+import { StockRepo, ShopRepo, DeviceRepo } from '@bali-hub-pos/core';
 import { ProductsScreen } from '../screens/ProductsScreen';
 import { StockScreen } from '../screens/StockScreen';
 import { SaleScreen, useSaleDraft } from '../screens/SaleScreen';
@@ -29,7 +29,7 @@ export function Shell() {
   const navigate = useNavigate();
 
   const [lowStockCount, setLowStockCount] = useState(0);
-  const [shopName, setShopName] = useState('VaporFlow');
+  const [shopName, setShopName] = useState('Bali Hub POS');
   const [deviceCode, setDeviceCode] = useState('');
   const [currency, setCurrency] = useState('');
   const security = useSecurity();
@@ -155,7 +155,7 @@ export function Shell() {
             <Icon name="zap" />
           </span>
           <div className="min-w-0">
-            <strong>VaporFlow</strong>
+            <strong>Bali Hub POS</strong>
             <small>{shopName}</small>
           </div>
         </div>

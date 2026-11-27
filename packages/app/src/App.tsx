@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { DbProvider, useDb, usePlatform } from './context/DbProvider';
 import { CloudSyncProvider } from './context/CloudSyncProvider';
-import { ShopRepo, SettingsRepo } from '@vaporflow/core';
+import { ShopRepo, SettingsRepo } from '@bali-hub-pos/core';
 import { SetupWizard } from './screens/SetupWizard';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/Toast';
@@ -46,7 +46,7 @@ function AppRoot() {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6" role="status">
-        <p className="font-medium text-slate-600">VaporFlow — Checking shop configuration…</p>
+        <p className="font-medium text-slate-600">Bali Hub POS — Checking shop configuration…</p>
       </main>
     );
   }

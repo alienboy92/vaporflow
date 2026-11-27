@@ -12,7 +12,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@vaporflow/core': path.resolve(import.meta.dirname, '../core/src'),
+      '@bali-hub-pos/core': path.resolve(import.meta.dirname, '../core/src'),
     },
   },
   server: {

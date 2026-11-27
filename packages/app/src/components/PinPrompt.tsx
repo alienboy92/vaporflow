@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useDb } from '../context/DbProvider';
-import { SettingsRepo, verifyPin } from '@vaporflow/core';
+import { SettingsRepo, verifyPin } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 import { registerBackHandler } from '../utils/back-nav';
 

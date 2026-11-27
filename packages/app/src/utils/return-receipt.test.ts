@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import type { Sale, SaleItem, Shop } from '@vaporflow/core';
+import type { Sale, SaleItem, Shop } from '@bali-hub-pos/core';
 import { returnReceiptLines, returnReceiptHtml, returnReceiptPdf, type ReturnReceipt } from './return-receipt';
 const now = '2026-11-15T12:00:00.000Z';
 

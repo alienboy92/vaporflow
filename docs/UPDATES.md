@@ -1,6 +1,6 @@
 # Software Updates
 
-VaporFlow checks GitHub Releases for a newer version. It never downloads or installs
+Bali Hub POS checks GitHub Releases for a newer version. It never downloads or installs
 anything by itself: the user is shown an update banner (and a check button in Settings)
 and the matching installer/APK opens in the system browser.
 
@@ -24,9 +24,9 @@ and the matching installer/APK opens in the system browser.
 1. Increase the stable version in `apps/desktop/package.json`. The renderer and Android consume it. Android derives a strictly increasing code for successive stable versions (1.0.0 = 1, 1.0.1 = 2).
 2. Build the installers:
    ```powershell
-   pnpm build:desktop        # produces apps/desktop/out/VaporFlow Setup <version>.exe
-   pnpm --filter @vaporflow/mobile build
-   pnpm --filter @vaporflow/mobile cap:sync
+   pnpm build:desktop        # produces apps/desktop/out/Bali Hub POS Setup <version>.exe
+   pnpm --filter @bali-hub-pos/mobile build
+   pnpm --filter @bali-hub-pos/mobile cap:sync
    . ./scripts/android-env.ps1
    ./apps/mobile/android/gradlew.bat -p apps/mobile/android :app:assembleRelease
    ```
@@ -35,8 +35,8 @@ and the matching installer/APK opens in the system browser.
    - Title: the version
    - Description: user-facing release notes (shown inside Settings)
 4. Attach both assets and keep their extensions:
-   - Windows: `VaporFlow Setup <version>.exe`
-   - Android: `VaporFlow-<version>.apk`
+   - Windows: `Bali Hub POS Setup <version>.exe`
+   - Android: `Bali-Hub-POS-<version>.apk`
 5. Publish. The next check picks it up automatically.
 
 `releases/latest` ignores drafts and prereleases, so publish only when the build is ready.

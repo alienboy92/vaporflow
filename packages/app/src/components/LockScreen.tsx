@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDb } from '../context/DbProvider';
-import { SettingsRepo, verifyPin } from '@vaporflow/core';
+import { SettingsRepo, verifyPin } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 
 interface LockScreenProps {
@@ -46,7 +46,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
           🔒
         </div>
         <div>
-          <h2 className="text-xl font-bold text-slate-900">VaporFlow Locked</h2>
+          <h2 className="text-xl font-bold text-slate-900">Bali Hub POS Locked</h2>
           <p className="vf-sub mt-1">Enter your PIN to unlock the app.</p>
         </div>
 

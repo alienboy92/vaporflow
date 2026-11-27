@@ -10,8 +10,8 @@ import {
   uuidv7,
   formatMoney,
   localDate,
-} from '@vaporflow/core';
-import type { Shop, Sale, SaleItem, Return, ReturnItem } from '@vaporflow/core';
+} from '@bali-hub-pos/core';
+import type { Shop, Sale, SaleItem, Return, ReturnItem } from '@bali-hub-pos/core';
 import { globalErrorLogger } from '../utils/logger';
 import { notifyStockChanged } from '../utils/stock-events';
 import { registerBackHandler } from '../utils/back-nav';

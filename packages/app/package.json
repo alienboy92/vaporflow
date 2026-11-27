@@ -1,5 +1,5 @@
 {
-  "name": "@vaporflow/app",
+  "name": "@bali-hub-pos/app",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
     "@capacitor/core": "^6.2.0",
     "@supabase/supabase-js": "^2.119.0",
     "@tanstack/react-virtual": "3",
-    "@vaporflow/core": "workspace:*",
-    "@vaporflow/mobile": "workspace:*",
+    "@bali-hub-pos/core": "workspace:*",
+    "@bali-hub-pos/mobile": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.0",

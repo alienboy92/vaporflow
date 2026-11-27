@@ -1,10 +1,10 @@
 import Database from 'better-sqlite3';
 import { describe, it, expect } from 'vitest';
-import { MIGRATIONS, type MigrationRecord } from '@vaporflow/core';
+import { MIGRATIONS, type MigrationRecord } from '@bali-hub-pos/core';
 import {
   adapterContract,
   runMigrationFailureContract,
-} from '@vaporflow/core/testing/adapter-contract';
+} from '@bali-hub-pos/core/testing/adapter-contract';
 import { CapacitorDbAdapter, type MobileConnection } from './capacitor-adapter.js';
 
 // Plugin API double backed by SQLite; native device acceptance remains separate.

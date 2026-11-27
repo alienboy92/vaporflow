@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { SettingsRepo } from '@vaporflow/core';
+import { SettingsRepo } from '@bali-hub-pos/core';
 import { useDb } from '../context/DbProvider';
 import { IdleLock } from '../utils/idle-lock';
 

@@ -26,8 +26,8 @@ The pre-existing untracked review-probe.test.ts was converted into regression te
 | pnpm lint | PASS |
 | pnpm typecheck | PASS |
 | pnpm test | PASS: 115 tests, 2 opt-in tests skipped; 20 passing files and 1 skipped file |
-| pnpm --filter @vaporflow/app build | PASS; existing bundle-size and Zod annotation warnings |
-| pnpm --filter @vaporflow/desktop test:contract | PASS: 6 native Electron checks, including populated restore, failed replacement, and ledger guards |
+| pnpm --filter @bali-hub-pos/app build | PASS; existing bundle-size and Zod annotation warnings |
+| pnpm --filter @bali-hub-pos/desktop test:contract | PASS: 6 native Electron checks, including populated restore, failed replacement, and ledger guards |
 | Capacitor adapter contract | PASS with a SQLite-backed plugin double; not a physical Android test |
 | Full-scale report benchmark | PASS: report cards, daily series, both top-10 queries combined 249.4 ms; inventory 61.2 ms |
 | CSV 2,000 rows | PASS: final suite measured 660 ms; reimport creates no duplicates |
@@ -41,8 +41,8 @@ Run from the repository root:
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm --filter @vaporflow/app build
-pnpm --filter @vaporflow/desktop test:contract
+pnpm --filter @bali-hub-pos/app build
+pnpm --filter @bali-hub-pos/desktop test:contract
 $env:VAPORFLOW_BENCH = '1'
 pnpm test -- packages/core/src/scale-benchmark.test.ts
 Remove-Item Env:VAPORFLOW_BENCH

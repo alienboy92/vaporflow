@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-const executable = fileURLToPath(new URL('../out/win-unpacked/VaporFlow.exe', import.meta.url));
+const executable = fileURLToPath(new URL('../out/win-unpacked/Bali Hub POS.exe', import.meta.url));
 const directory = await mkdtemp(path.join(tmpdir(), 'vaporflow-smoke-'));
 async function launch() {
   const env = { ...process.env };

@@ -1,4 +1,4 @@
-# VaporFlow — Phase 8A review
+# Bali Hub POS — Phase 8A review
 
 Updated 16 November 2026. Scope: sync engine and simulated devices (fake transport, two-device convergence). Implementation commit `e8c465c`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` is unchanged.
 
@@ -37,7 +37,7 @@ Independent review of `e8c465c` found ten issues; all are resolved:
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
 | `pnpm test` | PASS — 134 tests across 22 files (was 119; +15 sync acceptance/conversion tests), plus 2 skipped opt-in benchmarks |
-| `pnpm --filter @vaporflow/app build` | PASS — 12.7 s; main chunk 897.7 kB (247.7 kB gzip) |
+| `pnpm --filter @bali-hub-pos/app build` | PASS — 12.7 s; main chunk 897.7 kB (247.7 kB gzip) |
 
 ## Remaining acceptance (hardware/live)
 

@@ -1,4 +1,4 @@
-import { BatchSchema, isAllowedExternalUrl, StatementSchema } from '@vaporflow/core';
+import { BatchSchema, isAllowedExternalUrl, StatementSchema } from '@bali-hub-pos/core';
 
 export function assertSender(
   actual: { webContentsId: number; isMainFrame: boolean; url: string },

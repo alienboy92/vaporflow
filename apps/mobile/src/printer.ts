@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
-import { Printer } from '@vaporflow/capacitor-printer';
-import type { PrinterAdapter } from '@vaporflow/core';
+import { Printer } from '@bali-hub-pos/capacitor-printer';
+import type { PrinterAdapter } from '@bali-hub-pos/core';
 
 /**
  * Native Android printing through the local "Printer" Capacitor plugin. The
@@ -10,7 +10,7 @@ import type { PrinterAdapter } from '@vaporflow/core';
  */
 async function print(html: string, documentName: string): Promise<void> {
   if (!Capacitor.isPluginAvailable('Printer')) {
-    throw new Error('Printing is not available in this build. Install the latest VaporFlow app.');
+    throw new Error('Printing is not available in this build. Install the latest Bali Hub POS app.');
   }
   await Printer.printHtml({ html, documentName });
 }

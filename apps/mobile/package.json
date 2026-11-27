@@ -1,10 +1,10 @@
 {
-  "name": "@vaporflow/mobile",
+  "name": "@bali-hub-pos/mobile",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter @vaporflow/app exec vite build --outDir ../../apps/mobile/dist --emptyOutDir",
+    "build": "pnpm --filter @bali-hub-pos/app exec vite build --outDir ../../apps/mobile/dist --emptyOutDir",
     "cap:sync": "npx cap sync android",
     "android:run": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/android.ps1",
     "typecheck": "tsc --noEmit"
@@ -17,8 +17,8 @@
     "@capacitor/core": "^6.2.0",
     "@capacitor/filesystem": "^6.0.2",
     "@capacitor/share": "^6.0.2",
-    "@vaporflow/capacitor-printer": "workspace:*",
-    "@vaporflow/core": "workspace:*"
+    "@bali-hub-pos/capacitor-printer": "workspace:*",
+    "@bali-hub-pos/core": "workspace:*"
   },
   "main": "./src/index.ts",
   "types": "./dist-ts/index.d.ts",

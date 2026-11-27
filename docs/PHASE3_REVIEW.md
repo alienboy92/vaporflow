@@ -17,7 +17,7 @@ Corrections applied after review of `abcbe93`. SPEC.md and the user's existing B
 
 Verified in this correction pass: lint PASS, typecheck PASS, all 53 tests PASS, Windows unpacked build and packaged smoke PASS, Android diagnostics build/plugin sync/debug APK PASS. No corrected APK was installed onto the phone during this pass. React Router future-version notices and existing native build warnings remain non-fatal.
 
-Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` (53 tests across 9 files). Run `pnpm --filter @vaporflow/desktop build:unpacked` then `pnpm --filter @vaporflow/desktop smoke` for isolated packaged startup, IPC, migration, rollback and restart-persistence checks. This smoke does not claim full interactive setup/PIN acceptance.
+Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` (53 tests across 9 files). Run `pnpm --filter @bali-hub-pos/desktop build:unpacked` then `pnpm --filter @bali-hub-pos/desktop smoke` for isolated packaged startup, IPC, migration, rollback and restart-persistence checks. This smoke does not claim full interactive setup/PIN acceptance.
 
 ## Remaining acceptance
 

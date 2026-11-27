@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { useDb } from '../context/DbProvider';
 import { useCloudSync } from '../context/CloudSyncProvider';
-import { ShopRepo } from '@vaporflow/core';
+import { ShopRepo } from '@bali-hub-pos/core';
 import { resizeLogo } from '../utils/logo';
 import { globalErrorLogger } from '../utils/logger';
-import { uuidv7 } from '@vaporflow/core';
+import { uuidv7 } from '@bali-hub-pos/core';
 import { Icon } from '../components/Icon';
 
 interface SetupWizardProps {
@@ -323,7 +323,7 @@ function JoinShopForm({ sync, onComplete }: JoinShopFormProps & { onComplete: ()
           onClick={onComplete}
           className="vf-btn-primary w-full"
         >
-          Start using VaporFlow
+          Start using Bali Hub POS
         </button>
       </div>
     );

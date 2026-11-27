@@ -10,7 +10,7 @@ import { ReportRepo } from './repositories/report.js';
 import { uuidv7 } from './uuid.js';
 import path from 'node:path';
 
-describe('VaporFlow Core Correction Pass Tests', () => {
+describe('Bali Hub POS Core Correction Pass Tests', () => {
   let db: SqliteTestAdapter;
 
   beforeEach(async () => {

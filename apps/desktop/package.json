@@ -1,16 +1,16 @@
 {
-  "name": "@vaporflow/desktop",
-  "description": "Offline-first VaporFlow retail point of sale for Windows",
+  "name": "@bali-hub-pos/desktop",
+  "description": "Offline-first Bali Hub POS retail point of sale for Windows",
   "author": "Abdullah Aaraiz",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "node scripts/dev.js",
-    "build": "pnpm --filter @vaporflow/app build && node scripts/build-electron.js && electron-builder --win",
+    "build": "pnpm --filter @bali-hub-pos/app build && node scripts/build-electron.js && electron-builder --win",
     "typecheck": "tsc --noEmit",
-    "build:unpacked": "pnpm --filter @vaporflow/app build && node scripts/build-electron.js && electron-builder --dir --win",
+    "build:unpacked": "pnpm --filter @bali-hub-pos/app build && node scripts/build-electron.js && electron-builder --dir --win",
     "smoke": "node scripts/smoke.js",
     "test:contract": "node scripts/contract.js"
   },
@@ -20,12 +20,12 @@
     "electron-builder": "26.18.0",
     "esbuild": "0.28.2",
     "typescript": "^5.6.0",
-    "@vaporflow/core": "workspace:*",
+    "@bali-hub-pos/core": "workspace:*",
     "electron-builder-squirrel-windows": "26.18.0"
   },
   "build": {
     "appId": "com.vaporflow.pos",
-    "productName": "VaporFlow",
+    "productName": "Bali Hub POS",
     "directories": {
       "output": "out"
     },

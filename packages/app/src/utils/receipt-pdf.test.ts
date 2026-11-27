@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildReceiptPdf, RECEIPT_PDF_WIDTH_PT, buildReceiptPdfLines } from './receipt-pdf';
-import type { Sale, SaleItem, Shop } from '@vaporflow/core';
+import type { Sale, SaleItem, Shop } from '@bali-hub-pos/core';
 
 const now = '2026-11-15T12:00:00.000Z';
 

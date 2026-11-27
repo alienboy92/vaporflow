@@ -14,7 +14,7 @@ dependencies {
     implementation project(':capacitor-app')
     implementation project(':capacitor-filesystem')
     implementation project(':capacitor-share')
-    implementation project(':vaporflow-capacitor-printer')
+    implementation project(':bali-hub-pos-capacitor-printer')
 
 }
 

@@ -1,4 +1,4 @@
-# VaporFlow — Phase 9 review
+# Bali Hub POS — Phase 9 review
 
 Updated 17 November 2026. Scope: camera scanner, OTG scanner, mobile finishing. Implementation commit `d14fa59`, review-repair commit recorded in `docs/BUILD_STATUS.md`. `docs/SPEC.md` and `docs/BUILD_PROMPTS.md` are unchanged.
 
@@ -28,9 +28,9 @@ Updated 17 November 2026. Scope: camera scanner, OTG scanner, mobile finishing. 
 | `pnpm lint` | PASS |
 | `pnpm typecheck` | PASS |
 | `pnpm test` | PASS — 160 tests across 25 files (was 152; +8 back-nav/wedge/abandon-cart unit tests), plus 2 skipped opt-in benchmarks and 3 skipped env-gated live tests |
-| `pnpm --filter @vaporflow/app build` | PASS |
+| `pnpm --filter @bali-hub-pos/app build` | PASS |
 | `pnpm build:desktop` (Electron NSIS) | PASS — unsigned dev build, as before |
-| `pnpm --filter @vaporflow/mobile build` + `cap sync android` + `gradlew assembleDebug` | PASS — debug APK builds with the scanner/app plugins (3m 27 s) |
+| `pnpm --filter @bali-hub-pos/mobile build` + `cap sync android` + `gradlew assembleDebug` | PASS — debug APK builds with the scanner/app plugins (3m 27 s) |
 
 ## Remaining acceptance (hardware)
 

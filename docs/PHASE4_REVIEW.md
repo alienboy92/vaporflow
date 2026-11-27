@@ -1,4 +1,4 @@
-# VaporFlow — Phase 4 review
+# Bali Hub POS — Phase 4 review
 
 > Follow-up: [Phases 4–7 repair and current evidence](PHASE4_7_REPAIR.md) supersedes conflicting completion claims below.
 

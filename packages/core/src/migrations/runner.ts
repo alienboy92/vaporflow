@@ -28,7 +28,7 @@ export async function applyMigrations(
     .parse(await driver.query('SELECT name FROM _migrations'));
   const applied = new Set(rows.map((row) => row.name));
   if (rows.some(({ name }) => !names.slice(0, applied.size).includes(name))) {
-    throw new Error("Unsupported database migration history. Update VaporFlow before opening this shop.");
+    throw new Error("Unsupported database migration history. Update Bali Hub POS before opening this shop.");
   }
   if (applied.size > 0 && applied.size < migrations.length) await driver.beforeUpgrade?.();
   for (const migration of migrations)

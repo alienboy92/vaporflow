@@ -1,5 +1,5 @@
 /**
- * Domain types and zod schemas for every table in VaporFlow.
+ * Domain types and zod schemas for every table in Bali Hub POS.
  * Money is always an integer (smallest display unit). Quantities are integers.
  */
 

@@ -19,7 +19,7 @@
     "outDir": "dist-types",
     "rootDir": "src",
     "paths": {
-      "@vaporflow/core": [
+      "@bali-hub-pos/core": [
         "../../packages/core/src/index.ts"
       ]
     }

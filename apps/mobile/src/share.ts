@@ -1,7 +1,7 @@
 /** Android file sharing via Capacitor Filesystem + Share plugins. */
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import type { ShareAdapter } from '@vaporflow/core';
+import type { ShareAdapter } from '@bali-hub-pos/core';
 
 /** Base64 for arbitrary bytes without Node Buffer (chunked to avoid arg limits). */
 export function bytesToBase64(bytes: Uint8Array): string {

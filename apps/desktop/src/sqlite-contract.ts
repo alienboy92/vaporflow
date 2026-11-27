@@ -2,11 +2,11 @@ import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { MIGRATIONS, switchConnection } from '@vaporflow/core';
+import { MIGRATIONS, switchConnection } from '@bali-hub-pos/core';
 import {
   adapterContract,
   runMigrationFailureContract,
-} from '@vaporflow/core/testing/adapter-contract';
+} from '@bali-hub-pos/core/testing/adapter-contract';
 import { ElectronDbAdapter } from './sqlite-adapter.js';
 async function run(): Promise<void> {
   for (const test of adapterContract) {

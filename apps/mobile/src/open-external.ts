@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { isAllowedExternalUrl, type AppAdapter } from '@vaporflow/core';
+import { isAllowedExternalUrl, type AppAdapter } from '@bali-hub-pos/core';
 
 /**
  * Opens allow-listed links in the system browser. Capacitor's Android WebView

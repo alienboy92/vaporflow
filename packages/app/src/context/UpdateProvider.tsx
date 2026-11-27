@@ -13,7 +13,7 @@ import {
   checkForUpdate,
   DEFAULT_UPDATE_REPO,
   type UpdateCheckResult,
-} from '@vaporflow/core';
+} from '@bali-hub-pos/core';
 import { usePlatform } from './DbProvider';
 import { globalErrorLogger } from '../utils/logger';
 

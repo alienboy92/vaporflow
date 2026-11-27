@@ -8,7 +8,7 @@ import { z } from 'zod';
  * installer/APK link in the system browser.
  */
 
-/** Repository that publishes VaporFlow releases. Override with VITE_UPDATE_REPO. */
+/** Repository that publishes Bali Hub POS releases. Override with VITE_UPDATE_REPO. */
 export const DEFAULT_UPDATE_REPO = 'alienboy92/vaporflow';
 
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;

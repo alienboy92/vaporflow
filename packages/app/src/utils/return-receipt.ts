@@ -1,4 +1,4 @@
-import { formatMoney, type Return, type ReturnItem, type Sale, type SaleItem, type Shop } from '@vaporflow/core';
+import { formatMoney, type Return, type ReturnItem, type Sale, type SaleItem, type Shop } from '@bali-hub-pos/core';
 import { buildTextReceiptPdf, type PdfLine } from './receipt-pdf';
 
 export interface ReturnReceipt {

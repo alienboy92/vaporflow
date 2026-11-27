@@ -1,5 +1,5 @@
 {
-  "name": "vaporflow",
+  "name": "bali-hub-pos",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -7,8 +7,8 @@
     "lint": "node ./node_modules/eslint/bin/eslint.js . --ext .ts,.tsx",
     "typecheck": "node ./node_modules/typescript/bin/tsc -b",
     "test": "node ./node_modules/vitest/vitest.mjs run",
-    "dev:desktop": "pnpm --filter @vaporflow/desktop dev",
-    "build:desktop": "pnpm --filter @vaporflow/desktop build",
+    "dev:desktop": "pnpm --filter @bali-hub-pos/desktop dev",
+    "build:desktop": "pnpm --filter @bali-hub-pos/desktop build",
     "android:run": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android.ps1",
     "doctor:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/android.ps1 -Doctor"
   },

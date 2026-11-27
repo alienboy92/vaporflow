@@ -1,4 +1,4 @@
--- VaporFlow Initial Supabase Migration (PostgreSQL)
+-- Bali Hub POS Initial Supabase Migration (PostgreSQL)
 
 -- ---------------------------------------------------------------------------
 -- 1. Trigger function for server_updated_at

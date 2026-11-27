@@ -1,4 +1,4 @@
-import type { PrinterAdapter } from '@vaporflow/core';
+import type { PrinterAdapter } from '@bali-hub-pos/core';
 import { printDocument } from './print';
 
 /** Desktop/web printer: opens the browser print dialog on the given document. */

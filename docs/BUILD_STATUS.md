@@ -1,4 +1,4 @@
-# VaporFlow — Build Status
+# Bali Hub POS — Build Status
 
 Updated 17 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS.md).
 
@@ -8,7 +8,7 @@ Updated 17 November 2026. Follow version 2.0 of [BUILD_PROMPTS.md](BUILD_PROMPTS
 
 Live hosted acceptance (17 Nov 2026) against `https://qdgfnpmmphlvsdkggabf.supabase.co` — schema deployed via Dashboard SQL editor, email confirmation off, two disposable accounts, executed by the env-gated `packages/core/src/sync/supabase-live.test.ts`: **6/6 PASS** (hosted Auth sign-up/sign-in/sign-out; `claim_shop`; two-engine convergence through the real `sync_push`/`sync_pull` RPCs; full second-device enrollment over the network with counter recovery; concurrent claim contention; interrupted-enrollment retry against the hosted cloud; signed-out denial; second-account authorization denial including batch-rejected rogue push). Details: [Phase 8B review](PHASE8B_REVIEW.md), how to re-run: [SUPABASE_SETUP.md §4](SUPABASE_SETUP.md).
 
-Phase 9 readiness: JDK 17 + Android SDK Platform 34 + Build-Tools 34.0.0 verified; `@vaporflow/mobile` Vite build, `cap sync android`, and `gradlew assembleDebug` all succeed (debug APK built with the current code, including 8B). A physical phone is needed for the on-device work.
+Phase 9 readiness: JDK 17 + Android SDK Platform 34 + Build-Tools 34.0.0 verified; `@bali-hub-pos/mobile` Vite build, `cap sync android`, and `gradlew assembleDebug` all succeed (debug APK built with the current code, including 8B). A physical phone is needed for the on-device work.
 
 Still NOT RUN (needs physical hardware / wall-clock, cannot run from one machine): airplane-mode sell-then-reconnect convergence between a real Windows PC and a real Android phone; kill/restart of the app process mid-pull on a device; session expiry over a real ~1-hour window. See the review doc.
 
@@ -71,7 +71,7 @@ Verification on 19 November 2026: `pnpm lint` clean, `pnpm typecheck` clean, `pn
 - **Platform wiring**: `PrinterAdapter` is now part of `PlatformAdapters`. Desktop/web uses the browser print dialog; Android uses the native plugin. Receipts, return receipts, and A4 label sheets all go through `platform.printer`.
 - **Product form clarity**: removed the Manual/Scanner toggle from the create/edit product header; renamed "Threshold Override" to "Low-stock alert at" with the shop default shown in the placeholder; marked SKU as optional with an example and tooltip; added "Units already on hand" help under opening stock.
 
-Verified: `pnpm lint`, `pnpm typecheck`, `pnpm test` (166 passed / 8 skipped), `pnpm --filter @vaporflow/mobile build`, `npx cap sync android`, and `gradlew assembleDebug` → BUILD SUCCESSFUL with `:vaporflow-capacitor-printer` included. On-device print dialog acceptance still needs a device/print service.
+Verified: `pnpm lint`, `pnpm typecheck`, `pnpm test` (166 passed / 8 skipped), `pnpm --filter @bali-hub-pos/mobile build`, `npx cap sync android`, and `gradlew assembleDebug` → BUILD SUCCESSFUL with `:bali-hub-pos-capacitor-printer` included. On-device print dialog acceptance still needs a device/print service.
 
 ## Clear Data — 19 November 2026
 
