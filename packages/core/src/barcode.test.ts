@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { generateEAN13, validateBarcode, encodeEAN13Modules, ean13BarRuns } from './barcode.js';
+import {
+  generateEAN13,
+  validateBarcode,
+  encodeEAN13Modules,
+  ean13BarRuns,
+  validateCode128,
+  encodeCode128Modules,
+  code128BarRuns,
+  barcodeSymbology,
+  isRenderableBarcode,
+  CODE128_MAX_LENGTH,
+} from './barcode.js';
 
 describe('EAN-13 module encoding', () => {
   it('produces exactly 95 modules with correct guard patterns', () => {
@@ -67,5 +78,65 @@ describe('EAN-13 module encoding', () => {
   it('encodes the same digits deterministically', () => {
     const barcode = generateEAN13();
     expect(encodeEAN13Modules(barcode).join('')).toBe(encodeEAN13Modules(barcode).join(''));
+  });
+});
+
+describe('Code 128 module encoding', () => {
+  it('encodes a known single-character value (Start B, data, checksum, stop)', () => {
+    // "A" = Start B(104), 'A'(33), checksum 34, stop(106).
+    const modules = encodeCode128Modules('A').join('');
+    expect(modules).toBe(
+      '11010010000' + // Start B
+        '10100011000' + // 'A'
+        '10001011000' + // checksum 34
+        '1100011101011', // stop
+    );
+    expect(modules).toHaveLength(46);
+  });
+
+  it('accepts letters, numbers, spaces and mixed text', () => {
+    expect(validateCode128('POD-MINT-01')).toBe(true);
+    expect(validateCode128('Bali Hub 2026')).toBe(true);
+    expect(validateCode128('123456789012')).toBe(true);
+    expect(validateCode128('~!@#$%^&*()_+')).toBe(true);
+  });
+
+  it('rejects empty, over-long and non-ASCII values', () => {
+    expect(validateCode128('')).toBe(false);
+    expect(validateCode128('A'.repeat(CODE128_MAX_LENGTH))).toBe(true);
+    expect(validateCode128('A'.repeat(CODE128_MAX_LENGTH + 1))).toBe(false);
+    expect(validateCode128('café')).toBe(false);
+    expect(validateCode128('🙂')).toBe(false);
+  });
+
+  it('rejects invalid values instead of encoding them', () => {
+    expect(() => encodeCode128Modules('')).toThrow(/Invalid Code 128/);
+    expect(() => encodeCode128Modules('café')).toThrow(/Invalid Code 128/);
+  });
+
+  it('produces well-formed bar runs that rebuild the modules', () => {
+    for (const value of ['A', 'POD-MINT-01', 'Bali Hub 2026']) {
+      const modules = encodeCode128Modules(value);
+      const runs = code128BarRuns(value);
+      const rebuilt = new Array<number>(modules.length).fill(0);
+      for (const run of runs) {
+        expect(run.offset).toBeGreaterThanOrEqual(0);
+        expect(run.width).toBeGreaterThan(0);
+        expect(run.offset + run.width).toBeLessThanOrEqual(modules.length);
+        for (let m = run.offset; m < run.offset + run.width; m++) rebuilt[m] = 1;
+      }
+      expect(rebuilt.join('')).toBe(modules.join(''));
+    }
+  });
+
+  it('detects symbology and renderability', () => {
+    expect(barcodeSymbology('4006381333931')).toBe('ean13');
+    expect(barcodeSymbology('POD-MINT-01')).toBe('code128');
+    expect(barcodeSymbology('café')).toBeNull();
+    expect(barcodeSymbology('')).toBeNull();
+
+    expect(isRenderableBarcode('4006381333931')).toBe(true);
+    expect(isRenderableBarcode('POD-MINT-01')).toBe(true);
+    expect(isRenderableBarcode('café')).toBe(false);
   });
 });

@@ -63,9 +63,8 @@ export function encodeEAN13Modules(barcode: string): number[] {
   return modules;
 }
 
-/** Collapse the 95 modules into black bar runs (offset/width in modules) for rendering. */
-export function ean13BarRuns(barcode: string): { offset: number; width: number }[] {
-  const modules = encodeEAN13Modules(barcode);
+/** Collapse module bits into black bar runs (offset/width in modules) for rendering. */
+function modulesToBarRuns(modules: number[]): { offset: number; width: number }[] {
   const runs: { offset: number; width: number }[] = [];
   let start: number | null = null;
   for (let i = 0; i < modules.length; i++) {
@@ -78,4 +77,101 @@ export function ean13BarRuns(barcode: string): { offset: number; width: number }
   }
   if (start !== null) runs.push({ offset: start, width: modules.length - start });
   return runs;
+}
+
+/** Collapse the 95 EAN-13 modules into black bar runs for rendering. */
+export function ean13BarRuns(barcode: string): { offset: number; width: number }[] {
+  return modulesToBarRuns(encodeEAN13Modules(barcode));
+}
+
+// ---------------------------------------------------------------------------
+// Code 128 (Code Set B): letters, digits and mixed ASCII text.
+// ---------------------------------------------------------------------------
+
+/**
+ * Code 128 symbol widths, alternating bar/space and starting with a bar.
+ * Index is the symbol value; 104 = Start B, 106 = Stop (13 modules).
+ */
+const CODE128_PATTERNS = [
+  '212222', '222122', '222221', '121223', '121322', '131222', '122213', '122312', '132212', '221213',
+  '221312', '231212', '112232', '122132', '122231', '113222', '123122', '123221', '223211', '221132',
+  '221231', '213212', '223112', '312131', '311222', '321122', '321221', '312212', '322112', '322211',
+  '212123', '212321', '232121', '111323', '131123', '131321', '112313', '132113', '132311', '211313',
+  '231113', '231311', '112133', '112331', '132131', '113123', '113321', '133121', '313121', '211331',
+  '231131', '213113', '213311', '213131', '311123', '311321', '331121', '312113', '312311', '332111',
+  '314111', '221411', '431111', '111224', '111422', '121124', '121421', '141122', '141221', '112214',
+  '112412', '122114', '122411', '142112', '142211', '241211', '221114', '413111', '241112', '134111',
+  '111242', '121142', '121241', '114212', '124112', '124211', '411212', '421112', '421211', '212141',
+  '214121', '412121', '111143', '111341', '131141', '114113', '114311', '411113', '411311', '113141',
+  '114131', '311141', '411131', '211412', '211214', '211232', '2331112',
+];
+
+const CODE128_START_B = 104;
+const CODE128_STOP = 106;
+/** Practical cap so a custom value still prints at a readable width on a label. */
+export const CODE128_MAX_LENGTH = 40;
+
+/**
+ * Code 128 Set B accepts printable ASCII (space through tilde), so letters,
+ * digits and mixed text all work. Non-ASCII text cannot be encoded.
+ */
+export function validateCode128(value: string): boolean {
+  if (value.length === 0 || value.length > CODE128_MAX_LENGTH) return false;
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (code < 32 || code > 126) return false;
+  }
+  return true;
+}
+
+/** Encode a Code 128 Set B value into its modules (1 = bar, 0 = space). */
+export function encodeCode128Modules(value: string): number[] {
+  if (!validateCode128(value)) {
+    throw new Error(`Invalid Code 128 barcode: ${value}`);
+  }
+
+  const symbols: number[] = [CODE128_START_B];
+  let checksum = CODE128_START_B;
+  for (let i = 0; i < value.length; i++) {
+    const symbol = value.charCodeAt(i) - 32;
+    symbols.push(symbol);
+    checksum += symbol * (i + 1);
+  }
+  symbols.push(checksum % 103);
+  symbols.push(CODE128_STOP);
+
+  const modules: number[] = [];
+  for (const symbol of symbols) {
+    const pattern = CODE128_PATTERNS[symbol]!;
+    let isBar = true;
+    for (const widthChar of pattern) {
+      const width = Number(widthChar);
+      for (let i = 0; i < width; i++) modules.push(isBar ? 1 : 0);
+      isBar = !isBar;
+    }
+  }
+  return modules;
+}
+
+/** Collapse Code 128 modules into black bar runs for rendering. */
+export function code128BarRuns(value: string): { offset: number; width: number }[] {
+  return modulesToBarRuns(encodeCode128Modules(value));
+}
+
+export type BarcodeSymbology = 'ean13' | 'code128';
+
+/**
+ * Pick the symbology used to render a stored barcode. Valid 13-digit EAN-13
+ * values keep the existing EAN-13 rendering; everything else printable falls
+ * back to Code 128.
+ */
+export function barcodeSymbology(value: string): BarcodeSymbology | null {
+  if (validateBarcode(value)) return 'ean13';
+  if (validateCode128(value)) return 'code128';
+  return null;
+}
+
+/** True when the barcode can be drawn on a label by the built-in encoders. */
+export function isRenderableBarcode(value: string): boolean {
+  return barcodeSymbology(value) !== null;
 }

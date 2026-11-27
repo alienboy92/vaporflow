@@ -9,7 +9,9 @@ import {
   ShopRepo,
   DeviceRepo,
   generateEAN13,
-  validateBarcode,
+  barcodeSymbology,
+  isRenderableBarcode,
+  CODE128_MAX_LENGTH,
   formatMoney,
   uuidv7,
   generateCsvTemplate,
@@ -53,7 +55,7 @@ const LABEL_CSS = `
 .cell .name { font-size: 9pt; font-weight: bold; }
 .cell .variant { font-size: 8pt; color: #333; }
 .cell .price { font-size: 10pt; font-weight: bold; }
-.cell .barcode svg { width: 100%; max-width: 30mm; height: auto; }
+.cell .barcode svg { width: 100%; max-width: 52mm; height: auto; }
 `;
 
 export function ProductsScreen() {
@@ -88,6 +90,10 @@ export function ProductsScreen() {
   const [showNewCatInput, setShowNewCatInput] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
+  // Custom barcode dialog: which variant row is being edited and its draft value.
+  const [customBarcodeIndex, setCustomBarcodeIndex] = useState<number | null>(null);
+  const [customBarcodeValue, setCustomBarcodeValue] = useState('');
+  const [customBarcodeError, setCustomBarcodeError] = useState('');
 
   // Label printing: the product being labelled and its selected variant ids.
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
@@ -155,15 +161,53 @@ export function ProductsScreen() {
     void loadData();
   }, [loadData]);
 
-  // Android back button: close the create/edit and CSV-import dialogs first.
+  // Android back button: close the innermost dialog first.
   useEffect(() => {
-    if (!modalOpen && !csvModalOpen) return;
+    if (!modalOpen && !csvModalOpen && customBarcodeIndex === null) return;
     return registerBackHandler(() => {
-      if (csvModalOpen) setCsvModalOpen(false);
-      else setModalOpen(false);
+      if (customBarcodeIndex !== null) {
+        setCustomBarcodeIndex(null);
+        setCustomBarcodeValue('');
+        setCustomBarcodeError('');
+      } else if (csvModalOpen) {
+        setCsvModalOpen(false);
+      } else {
+        setModalOpen(false);
+      }
       return true;
     });
-  }, [modalOpen, csvModalOpen]);
+  }, [modalOpen, csvModalOpen, customBarcodeIndex]);
+
+  function openCustomBarcode(index: number) {
+    setCustomBarcodeIndex(index);
+    setCustomBarcodeValue(formVariants[index]?.barcode ?? '');
+    setCustomBarcodeError('');
+  }
+
+  function closeCustomBarcode() {
+    setCustomBarcodeIndex(null);
+    setCustomBarcodeValue('');
+    setCustomBarcodeError('');
+  }
+
+  function applyCustomBarcode() {
+    if (customBarcodeIndex === null) return;
+    const value = customBarcodeValue.trim();
+    if (!value) {
+      setCustomBarcodeError('Enter a barcode value.');
+      return;
+    }
+    if (!isRenderableBarcode(value)) {
+      setCustomBarcodeError(
+        `Use 1–${CODE128_MAX_LENGTH} letters, numbers or symbols (ASCII).`,
+      );
+      return;
+    }
+    setFormVariants((prev) =>
+      prev.map((item, i) => (i === customBarcodeIndex ? { ...item, barcode: value } : item)),
+    );
+    closeCustomBarcode();
+  }
 
   // SaleScreen scan-not-found offer: open the create modal with the scanned
   // barcode prefilled, then clear the navigation state so a refresh or back
@@ -194,14 +238,14 @@ export function ProductsScreen() {
   }
 
   // Builds A4 label sheets (3 columns x 8 rows = 24 labels per page) with the
-  // variant name, price and a scannable EAN-13 barcode, then opens the print
+  // variant name, price and a scannable barcode, then opens the print
   // dialog for exactly that content.
   async function printLabelsFor(
     entries: { product: Product; variant: Variant }[],
     title: string,
   ): Promise<void> {
     if (!shop) return;
-    const printable = entries.filter((e) => e.variant.barcode && validateBarcode(e.variant.barcode));
+    const printable = entries.filter((e) => e.variant.barcode && isRenderableBarcode(e.variant.barcode));
     if (printable.length === 0) return;
 
     const cells = printable
@@ -246,7 +290,7 @@ export function ProductsScreen() {
 
   function toggleProductLabels(product: Product, checked: boolean) {
     const printable = (variantsMap[product.id] || [])
-      .filter((v) => v.is_active === 1 && v.barcode && validateBarcode(v.barcode))
+      .filter((v) => v.is_active === 1 && v.barcode && isRenderableBarcode(v.barcode))
       .map((v) => v.id);
     setGlobalLabelSelected((prev) => {
       if (checked) return Array.from(new Set([...prev, ...printable]));
@@ -256,6 +300,7 @@ export function ProductsScreen() {
 
   function handleOpenCreate() {
     setEditingProduct(null);
+    closeCustomBarcode();
     setFormName('');
     const firstCat = categories[0];
     setFormCategoryId(firstCat ? firstCat.id : '');
@@ -282,6 +327,7 @@ export function ProductsScreen() {
 
   async function handleOpenEdit(product: Product) {
     setEditingProduct(product);
+    closeCustomBarcode();
     setFormName(product.name);
     setFormCategoryId(product.category_id ?? '');
     setFormBrand(product.brand ?? '');
@@ -632,7 +678,7 @@ export function ProductsScreen() {
                     0,
                   );
                   const printableVars = vars.filter(
-                    (v) => v.is_active === 1 && v.barcode && validateBarcode(v.barcode),
+                    (v) => v.is_active === 1 && v.barcode && isRenderableBarcode(v.barcode),
                   );
                   const allLabelSelected =
                     printableVars.length > 0 &&
@@ -739,13 +785,13 @@ export function ProductsScreen() {
             </div>
             <p className="vf-sub">
               Select the variants to label. Labels print on A4 sheets, 3 × 8 grid (24 per page), with the
-              variant name, price and a scannable EAN-13 barcode.
+              variant name, price and a scannable barcode.
             </p>
             <div className="max-h-72 divide-y divide-slate-100 overflow-y-auto">
               {(variantsMap[labelProduct.id] || [])
                 .filter((v) => v.is_active === 1)
                 .map((v) => {
-                  const printable = Boolean(v.barcode && validateBarcode(v.barcode));
+                  const printable = Boolean(v.barcode && isRenderableBarcode(v.barcode));
                   return (
                     <label
                       key={v.id}
@@ -764,7 +810,7 @@ export function ProductsScreen() {
                         <span className="block truncate text-sm font-medium text-slate-900">{v.name}</span>
                         <span className="vf-num block text-xs text-slate-500">
                           {v.barcode ?? 'No barcode'}
-                          {!printable && ' — not a valid EAN-13, skipped'}
+                          {!printable && ' — not printable, skipped'}
                         </span>
                       </span>
                       <span className="vf-num text-sm font-semibold text-slate-800">
@@ -937,6 +983,7 @@ export function ProductsScreen() {
                     const profit = sale - cost;
                     const margin = sale > 0 ? ((profit / sale) * 100).toFixed(1) : '0.0';
                     const isBelowCost = sale < cost;
+                    const barcodeType = vf.barcode.trim() ? barcodeSymbology(vf.barcode.trim()) : null;
 
                     return (
                       <div
@@ -992,7 +1039,7 @@ export function ProductsScreen() {
                           </div>
                           <div className="md:col-span-2">
                             <label className="vf-label">Barcode (Enter advances focus)</label>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                               <input
                                 ref={(el) => {
                                   barcodeInputRefs.current[index] = el;
@@ -1038,7 +1085,26 @@ export function ProductsScreen() {
                               >
                                 Generate
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => openCustomBarcode(index)}
+                                className="vf-btn-ghost min-h-10 px-3 text-xs"
+                                title="Use your own letters, numbers or mixed value"
+                              >
+                                Custom
+                              </button>
                             </div>
+                            {barcodeType && (
+                              <p className="vf-sub mt-1">
+                                Printable as {barcodeType === 'ean13' ? 'EAN-13' : 'Code 128'}
+                              </p>
+                            )}
+                            {vf.barcode.trim() !== '' && !barcodeType && (
+                              <p className="mt-1 text-xs text-rose-600">
+                                Not printable — use 1–{CODE128_MAX_LENGTH} letters, numbers or
+                                symbols (ASCII).
+                              </p>
+                            )}
                           </div>
                         </div>
 
@@ -1174,6 +1240,77 @@ export function ProductsScreen() {
                 </button>
               </div>
             </form>
+
+            {customBarcodeIndex !== null && (
+              <div
+                className="vf-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="custom-barcode-title"
+              >
+                <div className="vf-modal-card max-w-md space-y-4 p-6">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <h3 id="custom-barcode-title" className="text-lg font-bold text-slate-900">
+                      Custom Barcode
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={closeCustomBarcode}
+                      className="icon-button text-xl font-bold"
+                      aria-label="Close custom barcode"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p className="vf-sub">
+                    Enter your own code. Letters, numbers and mixed text are supported and printed
+                    as a scannable barcode.
+                  </p>
+                  <div>
+                    <label className="vf-label" htmlFor="custom-barcode-input">
+                      Barcode value
+                    </label>
+                    <input
+                      id="custom-barcode-input"
+                      type="text"
+                      autoFocus
+                      value={customBarcodeValue}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onChange={(e) => {
+                        setCustomBarcodeValue(e.target.value);
+                        setCustomBarcodeError('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          applyCustomBarcode();
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          closeCustomBarcode();
+                        }
+                      }}
+                      className="vf-input"
+                      maxLength={CODE128_MAX_LENGTH}
+                      placeholder="e.g. POD-MINT-01"
+                    />
+                    <p className="vf-sub mt-1">
+                      1–{CODE128_MAX_LENGTH} characters: letters, numbers, spaces or symbols.
+                    </p>
+                    {customBarcodeError && (
+                      <p className="mt-1 text-sm text-rose-600">{customBarcodeError}</p>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-3 border-t border-slate-200 pt-3">
+                    <button type="button" onClick={closeCustomBarcode} className="vf-btn-ghost">
+                      Cancel
+                    </button>
+                    <button type="button" onClick={applyCustomBarcode} className="vf-btn-primary">
+                      Use Barcode
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

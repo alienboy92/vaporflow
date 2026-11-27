@@ -28,4 +28,26 @@ describe('barcode SVG', () => {
     const svg = barcodeSvgString('4006381333931', { moduleWidth: 3, height: 50, showText: false });
     expect(svg).toContain('viewBox="0 0 327 50"');
   });
+
+  it('renders custom text barcodes as Code 128', () => {
+    const svg = barcodeSvgString('POD-MINT-01', { moduleWidth: 2, height: 40 });
+
+    // 11 modules per character + 11 start + 11 checksum + 13 stop = 11*n + 35.
+    // 11*11 + 35 = 156 modules; 156*2 + 2*10*2 = 352 wide; 40 + 14 text = 54 tall.
+    expect(svg).toContain('viewBox="0 0 352 54"');
+    expect(svg).toContain('aria-label="Barcode POD-MINT-01"');
+    expect(svg).toContain('>POD-MINT-01</text>');
+    expect(svg).toContain('<rect x="20" y="0" width="4" height="40" />');
+  });
+
+  it('uses the EAN-13 encoder for valid 13-digit values', () => {
+    const svg = barcodeSvgString('4006381333931', { moduleWidth: 2, height: 40 });
+    // EAN-13 is still 95 modules with a 7-module quiet zone.
+    expect(svg).toContain('viewBox="0 0 218 54"');
+  });
+
+  it('rejects values that no built-in encoder can render', () => {
+    expect(() => barcodeSvgString('')).toThrow(/Cannot render barcode/);
+    expect(() => barcodeSvgString('café')).toThrow(/Cannot render barcode/);
+  });
 });
