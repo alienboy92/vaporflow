@@ -1,6 +1,7 @@
 import { MIGRATIONS } from '@bali-hub-pos/core';
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
+import updater from 'electron-updater';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import { ElectronDbAdapter } from './sqlite-adapter.js';
@@ -54,6 +55,28 @@ async function start(): Promise<void> {
       },
       { webContentsId: window.webContents.id, url: entryUrl },
     );
+  const { autoUpdater } = updater;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  let ready = false;
+  let downloading: Promise<void> | undefined;
+  ipcMain.handle('update:download', async event => {
+    guard(event);
+    if (!app.isPackaged) throw new Error('Updates require an installed app.');
+    if (ready) return;
+    downloading ??= (async () => {
+      const result = await autoUpdater.checkForUpdates();
+      if (!result?.isUpdateAvailable) throw new Error('No Windows update is available.');
+      await autoUpdater.downloadUpdate();
+      ready = true;
+    })().finally(() => { downloading = undefined; });
+    await downloading;
+  });
+  ipcMain.handle('update:restart', event => {
+    guard(event);
+    if (!ready) throw new Error('Download the update first.');
+    autoUpdater.quitAndInstall(true, true);
+  });
   ipcMain.handle('db:query', async (event, sql: unknown, params: unknown) => {
     guard(event);
     const input = validateQuery(sql, params);

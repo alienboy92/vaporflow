@@ -8,6 +8,7 @@ export function UpdateBanner({ duringSale }: { duringSale: boolean }) {
   return (
     <div className="update-banner" role="status">
       <div className="min-w-0">
+        {updates.error && <p role="alert">{updates.error}</p>}
         <strong>Update available: v{updates.info.latestVersion}</strong>
         <span className="hidden sm:inline">
           {' '}
@@ -18,9 +19,10 @@ export function UpdateBanner({ duringSale }: { duringSale: boolean }) {
         <button
           type="button"
           className="vf-btn-primary min-h-9 px-3 text-xs"
+          disabled={updates.downloadState === 'downloading'}
           onClick={() => void updates.openDownload()}
         >
-          Download update
+          {updates.downloadState === 'ready' ? 'Restart to update' : updates.downloadState === 'downloading' ? 'Downloading…' : 'Download update'}
         </button>
         <button
           type="button"

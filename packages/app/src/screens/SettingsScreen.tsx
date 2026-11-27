@@ -873,7 +873,7 @@ export function SettingsScreen() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={updates.status === 'checking'}
+            disabled={updates.status === 'checking' || updates.downloadState !== 'idle'}
             onClick={() => void updates.check(true)}
             className="vf-btn-ghost"
           >
@@ -882,16 +882,16 @@ export function SettingsScreen() {
           {updates.status === 'available' && updates.info && (
             <button
               type="button"
+              disabled={updates.downloadState === 'downloading'}
               onClick={() => void updates.openDownload()}
               className="vf-btn-primary"
             >
-              Download update
+              {updates.downloadState === 'ready' ? 'Restart to update' : updates.downloadState === 'downloading' ? 'Downloading…' : 'Download update'}
             </button>
           )}
         </div>
         <p className="vf-sub">
-          Downloads open in your browser. Run the new installer on Windows or open the APK on
-          Android; your data stays on this device and is upgraded automatically.
+          {platform.platform === 'desktop' ? 'Download the update here, then restart when you are ready.' : 'Download the APK in your browser and open it to update.'}
         </p>
       </section>
 

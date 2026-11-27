@@ -2,7 +2,7 @@
   "name": "@bali-hub-pos/desktop",
   "description": "Offline-first Bali Hub POS retail point of sale for Windows",
   "author": "Abdullah Aaraiz",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",
@@ -15,16 +15,17 @@
     "test:contract": "node scripts/contract.js"
   },
   "devDependencies": {
+    "@bali-hub-pos/core": "workspace:*",
     "@types/node": "^22.0.0",
     "electron": "45.4.1",
     "electron-builder": "26.18.0",
+    "electron-builder-squirrel-windows": "26.18.0",
     "esbuild": "0.28.2",
-    "typescript": "^5.6.0",
-    "@bali-hub-pos/core": "workspace:*",
-    "electron-builder-squirrel-windows": "26.18.0"
+    "typescript": "^5.6.0"
   },
   "build": {
     "appId": "com.vaporflow.pos",
+    "publish": { "provider": "github", "owner": "alienboy92", "repo": "vaporflow" },
     "productName": "Bali Hub POS",
     "directories": {
       "output": "out"
@@ -49,5 +50,8 @@
       "allowToChangeInstallationDirectory": true
     },
     "npmRebuild": false
+  },
+  "dependencies": {
+    "electron-updater": "6"
   }
 }

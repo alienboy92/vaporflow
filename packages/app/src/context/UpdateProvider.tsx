@@ -44,6 +44,7 @@ function writeStorage(key: string, value: string): void {
 }
 
 export interface UpdatesContextValue {
+  downloadState: 'idle' | 'downloading' | 'ready';
   status: UpdateStatus;
   info: UpdateCheckResult | null;
   error: string;
@@ -58,6 +59,7 @@ export interface UpdatesContextValue {
 const UpdatesContext = createContext<UpdatesContextValue | null>(null);
 
 const fallback: UpdatesContextValue = {
+  downloadState: 'idle',
   status: 'idle',
   info: null,
   error: '',
@@ -85,11 +87,12 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(() =>
     readStorage(DISMISSED_KEY),
   );
+  const [downloadState, setDownloadState] = useState<UpdatesContextValue['downloadState']>('idle');
   const inFlight = useRef(false);
 
   const check = useCallback(
     async (manual = false) => {
-      if (inFlight.current) return;
+      if (downloadState !== 'idle' || inFlight.current) return;
       if (!platform.network.isOnline()) {
         if (manual) {
           setStatus('error');
@@ -126,7 +129,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
         inFlight.current = false;
       }
     },
-    [platform],
+    [platform, downloadState],
   );
 
   useEffect(() => {
@@ -147,6 +150,20 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     if (!info) return;
     const url = info.downloadUrl ?? info.releaseUrl;
     try {
+      if (platform.platform === 'desktop') {
+        if (downloadState === 'downloading') return;
+        setError('');
+        if (downloadState === 'ready') {
+          if (!platform.app.restartToUpdate) throw new Error('Updater unavailable');
+          await platform.app.restartToUpdate();
+        } else {
+          if (!platform.app.downloadUpdate) throw new Error('Updater unavailable');
+          setDownloadState('downloading');
+          await platform.app.downloadUpdate();
+          setDownloadState('ready');
+        }
+        return;
+      }
       if (platform.app) {
         await platform.app.openExternal(url);
       } else {
@@ -154,13 +171,19 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       globalErrorLogger.log(err);
+      if (platform.platform === 'desktop') {
+        setDownloadState(downloadState === 'ready' ? 'ready' : 'idle');
+        setError('The Windows update could not finish. Please try again.');
+        return;
+      }
       setStatus('error');
       setError('Could not open the download link. Open the release page manually.');
     }
-  }, [info, platform]);
+  }, [info, platform, downloadState]);
 
   const value = useMemo<UpdatesContextValue>(
     () => ({
+      downloadState,
       status,
       info,
       error,
@@ -171,7 +194,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       dismiss,
       openDownload,
     }),
-    [status, info, error, lastChecked, dismissedVersion, check, dismiss, openDownload],
+    [downloadState, status, info, error, lastChecked, dismissedVersion, check, dismiss, openDownload],
   );
 
   return <UpdatesContext.Provider value={value}>{children}</UpdatesContext.Provider>;

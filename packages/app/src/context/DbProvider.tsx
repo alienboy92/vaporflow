@@ -56,6 +56,8 @@ async function initialize(): Promise<PlatformAdapters> {
       },
       printer: browserPrinter,
       app: {
+        downloadUpdate: api.app.downloadUpdate,
+        restartToUpdate: api.app.restartToUpdate,
         openBackupFolder: () => api.app.openBackupFolder!(),
         openExternal: (url) => api.app.openExternal(url),
       },

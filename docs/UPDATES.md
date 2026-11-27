@@ -1,8 +1,6 @@
 # Software Updates
 
-Bali Hub POS checks GitHub Releases for a newer version. It never downloads or installs
-anything by itself: the user is shown an update banner (and a check button in Settings)
-and the matching installer/APK opens in the system browser.
+Bali Hub POS checks GitHub Releases on launch and from Settings. On Windows, Download update fetches the installer inside the app. When verification finishes, Restart to update installs it and reopens the app. Clients on 1.0.1 or earlier must install the first updater-enabled release manually. Android opens its download link in the system browser.
 
 ## How it works
 
@@ -34,8 +32,9 @@ and the matching installer/APK opens in the system browser.
    - Tag: `v<version>` (for example `v1.1.0`)
    - Title: the version
    - Description: user-facing release notes (shown inside Settings)
-4. Attach both assets and keep their extensions:
+4. Upload the Windows artifacts together, preserving the generated filenames referenced in latest.yml. Include the Android APK when available:
    - Windows: `Bali Hub POS Setup <version>.exe`
+   - Windows updater metadata: upload the generated `latest.yml` and installer `.blockmap` alongside the installer. Verify the URL in `latest.yml` matches the uploaded asset name.
    - Android: `Bali-Hub-POS-<version>.apk`
 5. Publish. The next check picks it up automatically.
 

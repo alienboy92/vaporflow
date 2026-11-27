@@ -10,6 +10,8 @@ const bridge: DesktopBridge = {
     migrate: () => ipcRenderer.invoke('db:migrate'),
   },
   app: {
+    downloadUpdate: () => ipcRenderer.invoke('update:download'),
+    restartToUpdate: () => ipcRenderer.invoke('update:restart'),
     openBackupFolder: () => ipcRenderer.invoke('app:openBackupFolder'),
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   },
