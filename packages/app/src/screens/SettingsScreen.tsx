@@ -888,12 +888,12 @@ export function SettingsScreen() {
               onClick={() => void updates.openDownload()}
               className="vf-btn-primary"
             >
-              {updates.downloadState === 'ready' ? 'Restart to update' : updates.downloadState === 'downloading' ? 'Downloading…' : 'Download update'}
+              {updates.downloadState === 'ready' ? updates.installLabel : updates.downloadState === 'downloading' ? 'Downloading…' : 'Download update'}
             </button>
           )}
         </div>
         <p className="vf-sub">
-          {platform.platform === 'desktop' ? 'Download the update here, then restart when you are ready.' : 'Download the APK in your browser and open it to update.'}
+          {platform.platform === 'desktop' ? 'Download the update here, then restart when you are ready.' : 'Download here, then tap Install update and confirm in Android.'}
         </p>
       </section>
 

@@ -22,7 +22,7 @@ export function UpdateBanner({ duringSale }: { duringSale: boolean }) {
           disabled={updates.downloadState === 'downloading'}
           onClick={() => void updates.openDownload()}
         >
-          {updates.downloadState === 'ready' ? 'Restart to update' : updates.downloadState === 'downloading' ? 'Downloading…' : 'Download update'}
+          {updates.downloadState === 'ready' ? updates.installLabel : updates.downloadState === 'downloading' ? 'Downloading…' : 'Download update'}
         </button>
         <button
           type="button"

@@ -45,6 +45,7 @@ function writeStorage(key: string, value: string): void {
 
 export interface UpdatesContextValue {
   downloadState: 'idle' | 'downloading' | 'ready';
+  installLabel: string;
   status: UpdateStatus;
   info: UpdateCheckResult | null;
   error: string;
@@ -60,6 +61,7 @@ const UpdatesContext = createContext<UpdatesContextValue | null>(null);
 
 const fallback: UpdatesContextValue = {
   downloadState: 'idle',
+  installLabel: 'Restart to update',
   status: 'idle',
   info: null,
   error: '',
@@ -150,16 +152,20 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     if (!info) return;
     const url = info.downloadUrl ?? info.releaseUrl;
     try {
-      if (platform.platform === 'desktop') {
+      if (platform.platform === 'desktop' || platform.app?.downloadAndroidUpdate) {
         if (downloadState === 'downloading') return;
         setError('');
         if (downloadState === 'ready') {
           if (!platform.app.restartToUpdate) throw new Error('Updater unavailable');
           await platform.app.restartToUpdate();
         } else {
-          if (!platform.app.downloadUpdate) throw new Error('Updater unavailable');
+
           setDownloadState('downloading');
-          await platform.app.downloadUpdate();
+          if (platform.platform === 'android') {
+            if (!info.downloadUrl || !info.sha256 || !platform.app.downloadAndroidUpdate) throw new Error('No verified Android update is available.');
+            await platform.app.downloadAndroidUpdate(info.downloadUrl, info.sha256);
+          } else if (platform.app.downloadUpdate) await platform.app.downloadUpdate();
+          else throw new Error('Updater unavailable');
           setDownloadState('ready');
         }
         return;
@@ -171,9 +177,9 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       globalErrorLogger.log(err);
-      if (platform.platform === 'desktop') {
+      if (platform.platform === 'desktop' || platform.app?.downloadAndroidUpdate) {
         setDownloadState(downloadState === 'ready' ? 'ready' : 'idle');
-        setError('The Windows update could not finish. Please try again.');
+        setError(platform.platform === 'android' && err instanceof Error ? err.message : 'The update could not finish. Please try again.');
         return;
       }
       setStatus('error');
@@ -183,6 +189,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<UpdatesContextValue>(
     () => ({
+      installLabel: platform.platform === 'android' ? 'Install update' : 'Restart to update',
       downloadState,
       status,
       info,
@@ -194,7 +201,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       dismiss,
       openDownload,
     }),
-    [downloadState, status, info, error, lastChecked, dismissedVersion, check, dismiss, openDownload],
+    [platform.platform, downloadState, status, info, error, lastChecked, dismissedVersion, check, dismiss, openDownload],
   );
 
   return <UpdatesContext.Provider value={value}>{children}</UpdatesContext.Provider>;

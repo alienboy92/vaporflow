@@ -2,7 +2,7 @@
   "name": "@bali-hub-pos/desktop",
   "description": "Offline-first Bali Hub POS retail point of sale for Windows",
   "author": "Abdullah Aaraiz",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "main": "dist-electron/main.js",

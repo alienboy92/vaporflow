@@ -3,6 +3,7 @@ import type { DbAdapter, NetworkAdapter, PrinterAdapter, ScannerAdapter, ShareAd
 /** Minimal app-level controls shared by desktop and Android. */
 export interface AppAdapter {
   getSetupSql?(): Promise<string | null>;
+  downloadAndroidUpdate?(url: string, sha256: string): Promise<void>;
   downloadUpdate?(): Promise<void>;
   restartToUpdate?(): Promise<void>;
   openBackupFolder?(): Promise<void>;
