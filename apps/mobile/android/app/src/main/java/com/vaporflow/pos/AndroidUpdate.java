@@ -35,7 +35,7 @@ public class AndroidUpdate extends Plugin {
                 ready = null;
                 String source = call.getString("url", "");
                 String hash = call.getString("sha256", "");
-                if (!source.matches("https://github[.]com/alienboy92/vaporflow/releases/download/v[0-9.]+/[A-Za-z0-9._-]+[.]apk") || !hash.matches("[a-fA-F0-9]{64}"))
+                if (!source.matches("https://github[.]com/alienboy92/(?:vaporflow|(?i:Bali-Hub-POS))/releases/download/v[0-9.]+/[A-Za-z0-9._-]+[.]apk") || !hash.matches("[a-fA-F0-9]{64}"))
                     throw new Exception("Invalid release asset");
                 connection = (HttpsURLConnection) new URL(source).openConnection();
                 connection.setConnectTimeout(20000);
